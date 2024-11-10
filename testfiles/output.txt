@@ -1,0 +1,53 @@
+<IDENT, firstvar>
+<ASSIGN>
+<INT, 123>
+<IDENT, asdf>
+<SEMICOLON>
+<IDENT, _secondVar>
+<ASSIGN>
+<FLOAT, 21.000000>
+<SEMICOLON>
+<IDENT, $var3>
+<ASSIGN>
+<FLOAT, 1.500000>
+<MULT_OP, %>
+<INVALID, .>
+<FLOAT, 523.300000>
+<SEMICOLON>
+<INT, 4>
+<IDENT, var>
+<KEYWORD, repeat>
+<LPAREN>
+<INT, 10>
+<RPAREN>
+<IDENT, var3>
+<ASSIGN>
+<INT, 2>
+<MULT_OP, *>
+<LPAREN>
+<IDENT, firstvar>
+<ADD_OP, +>
+<IDENT, secondvar>
+<RPAREN>
+<MULT_OP, />
+<LPAREN>
+<IDENT, firstvar>
+<ADD_OP, ->
+<INT, 2>
+<RPAREN>
+<SEMICOLON>
+<KEYWORD, repeat>
+<LPAREN>
+<IDENT, firstvar>
+<ADD_OP, +>
+<INT, 2>
+<MULT_OP, %>
+<IDENT, secondvar>
+<RPAREN>
+<KEYWORD, print>
+<IDENT, firstvar>
+<SEMICOLON>
+<EOF>
+
+
+Process finished with exit code 0
