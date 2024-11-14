@@ -6,7 +6,7 @@ extern crate pretty_env_logger;
 extern crate log;
 
 #[derive(Debug, PartialEq)]
-enum Token {
+enum Token<'a> {
     Int(u32),
     Float(f32),
     AddOp(char),
@@ -17,12 +17,12 @@ enum Token {
     Assign,
     Print,
     Repeat,
-    Ident(String),
+    Ident(&'a str),
     Invalid(char),
     Default,
 }
 
-impl fmt::Display for Token {
+impl<'a> fmt::Display for Token<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "<{:?}>", self)
     }
@@ -35,17 +35,17 @@ fn main() {
 
 fn read_file(path: &str) {
     let contents = fs::read_to_string(path).expect("Should have been able to read the file");
-    let tokens = lex_string(contents);
+    let tokens = lex_string(&contents);
     print_tokens(tokens);
 }
 
-fn lex_string(mut remaining_string: String) -> Vec<Token> {
+fn lex_string(mut remaining_string: &str) -> Vec<Token> {
     let mut tokens = vec![];
     // TODO: Refactor without the possibility of an infinite loop
     loop {
         let result = get_next_token(remaining_string);
         remaining_string = if let Some((token, string)) = result {
-            if token == Token::Ident("".to_string()) {
+            if token == Token::Ident("") {
                 error!("Infinite loop. Remaining: {}", string);
                 break;
             }
@@ -59,55 +59,50 @@ fn lex_string(mut remaining_string: String) -> Vec<Token> {
     tokens
 }
 
-fn get_next_token(remaining_string: String) -> Option<(Token, String)> {
-    let remaining_chars = remaining_string.trim_start().chars();
-    let mut last_chars = remaining_chars.clone();
-    if let Some(first_char) = last_chars.next() {
+fn get_next_token(remaining_string: &str) -> Option<(Token, &str)> {
+    let remaining_string = remaining_string.trim_start();
+    let mut remaining_chars = remaining_string.chars();
+    if let Some(first_char) = remaining_chars.nth(0) {
         Some(match first_char {
-            '+' | '-' => (Token::AddOp(first_char), last_chars.collect::<String>()),
-            '*' | '/' | '%' => (Token::MultOp(first_char), last_chars.collect::<String>()),
-            ';' => (Token::Semicolon, last_chars.collect::<String>()),
-            '=' => (Token::Assign, last_chars.collect::<String>()),
-            '(' => (Token::LeftParen, last_chars.collect::<String>()),
-            ')' => (Token::RightParen, last_chars.collect::<String>()),
-            '0'..='9' => get_number(remaining_chars),
-            'a'..='z' | 'A'..='Z' | '_' | '$' => get_ident(remaining_chars),
-            _ => (Token::Invalid(first_char), last_chars.collect::<String>()),
+            '+' | '-' => (Token::AddOp(first_char), remaining_chars.as_str()),
+            '*' | '/' | '%' => (Token::MultOp(first_char), remaining_chars.as_str()),
+            ';' => (Token::Semicolon, remaining_chars.as_str()),
+            '=' => (Token::Assign, remaining_chars.as_str()),
+            '(' => (Token::LeftParen, remaining_chars.as_str()),
+            ')' => (Token::RightParen, remaining_chars.as_str()),
+            '0'..='9' => get_number(remaining_string),
+            'a'..='z' | 'A'..='Z' | '_' | '$' => get_ident(remaining_string),
+            _ => (Token::Invalid(first_char), remaining_chars.as_str()),
         })
     } else {
         None
     }
 }
 
-fn get_ident(ident_and_remaining: Chars) -> (Token, String) {
-    // TODO: This needs major refactoring
-    let mut identifier = String::new();
-    let mut result = (
-        Token::Default,
-        ident_and_remaining.clone().collect::<String>(),
-    );
-    for (identifier_end, character) in ident_and_remaining.clone().enumerate() {
+fn get_ident(ident_and_remaining: &str) -> (Token, &str) {
+    let mut identifier = "";
+    let mut result = (Token::Default, ident_and_remaining);
+    for (identifier_end, character) in ident_and_remaining.chars().enumerate() {
         match character {
-            'a'..='z' | 'A'..='Z' | '_' | '$' | _ if identifier_end == result.1.len() - 1 => {
-                result = (
-                    Token::Ident(ident_and_remaining.collect::<String>()),
-                    String::new(),
-                );
+            'a'..='z' | 'A'..='Z' | '_' | '$' if identifier_end == result.1.len() - 1 => {
+                result = (Token::Ident(&ident_and_remaining[..identifier_end + 1]), "");
                 break;
             }
             'a'..='z' | 'A'..='Z' | '_' | '$' => (),
             _ => {
-                let mut ident_and_remaining = ident_and_remaining.collect::<String>();
-                let remaining = ident_and_remaining.split_off(identifier_end);
-                identifier = ident_and_remaining;
-                result = (Token::Ident(identifier.clone()), remaining);
+                let ident_and_remaining = ident_and_remaining;
+                identifier = &ident_and_remaining[..identifier_end];
+                result = (
+                    Token::Ident(identifier),
+                    &ident_and_remaining[identifier_end..],
+                );
                 break;
             }
         };
     }
     // Confim identifier is not a reserved keyword
     (
-        match identifier.as_str() {
+        match identifier {
             "print" => Token::Print,
             "repeat" => Token::Repeat,
             _ => result.0,
@@ -116,11 +111,14 @@ fn get_ident(ident_and_remaining: Chars) -> (Token, String) {
     )
 }
 
-fn get_number(number_and_remaining: Chars) -> (Token, String) {
+fn get_number(number_and_remaining: &str) -> (Token, &str) {
+    dbg!(number_and_remaining);
     let mut number_type = Token::Int(0);
-    let mut remaining = String::new();
-    let number_and_enumeration = number_and_remaining.clone().enumerate();
-    let mut number_and_remaining = number_and_remaining.collect::<String>();
+    let mut remaining = "";
+    let mut number = "";
+    let number_and_enumeration = number_and_remaining.chars().enumerate();
+    dbg!(&number_and_enumeration);
+    dbg!(number_and_remaining.len());
     for (number_end, character) in number_and_enumeration {
         match character {
             '.' => {
@@ -133,25 +131,36 @@ fn get_number(number_and_remaining: Chars) -> (Token, String) {
                     return (Token::Invalid('.'), remaining);
                 }
             }
+            '0'..='9' if number_end == number_and_remaining.len() - 1 => {
+                number = &number_and_remaining[..number_end + 1];
+                remaining = "";
+                dbg!(number_end);
+                break;
+            }
             '0'..='9' => (),
             _ => {
-                remaining = number_and_remaining.split_off(number_end);
+                dbg!(number_end);
+                dbg!(remaining);
+                number = &number_and_remaining[..number_end];
+                remaining = &number_and_remaining[number_end..];
                 break;
             }
         }
     }
     if number_type == Token::Float(0.0) {
-        (parse_float(number_and_remaining), remaining)
+        (parse_float(number), remaining)
     } else {
-        (parse_int(number_and_remaining), remaining)
+        (parse_int(number), remaining)
     }
 }
 
-fn parse_float(number: String) -> Token {
+fn parse_float(number: &str) -> Token {
+    dbg!("Trying to parse: {}", number);
     Token::Float(number.parse().expect("Number should be a parseable float"))
 }
 
-fn parse_int(number: String) -> Token {
+fn parse_int(number: &str) -> Token {
+    dbg!("Trying to parse: {}", number);
     Token::Int(number.parse().expect("Number should be a parseable int"))
 }
 
@@ -167,62 +176,68 @@ mod tests {
     use crate::Token::*;
 
     #[test]
-    fn it_lexes_ints() {
-        let (result, _) = get_next_token("1234".to_string()).unwrap();
+    fn it_gets_ints() {
+        let (result, _) = get_number("1234");
         assert_eq!(result, Int(1234));
     }
 
     #[test]
-    fn it_lexes_floats() {
-        let (result, _) = get_number("1234.5678".to_string().chars());
+    fn it_lexes_ints() {
+        let (result, _) = get_next_token("1234").unwrap();
+        assert_eq!(result, Int(1234));
+    }
+
+    #[test]
+    fn it_gets_floats() {
+        let (result, _) = get_number("1234.5678");
         assert_eq!(result, Float(1234.5678));
     }
 
     #[test]
-    fn it_lexes_idents() {
-        let result = get_ident("test$_ABC".to_string().chars());
-        assert_eq!(result, (Ident("test$_ABC".to_string()), String::new()));
+    fn it_gets_idents() {
+        let result = get_ident("test$_ABC");
+        assert_eq!(result, (Ident("test$_ABC"), ""));
     }
 
     #[test]
-    fn it_lexes_idents_with_whitespace() {
-        let response = get_ident("test \n nextword".to_string().chars());
-        assert_eq!(
-            response,
-            (Ident("test".to_string()), " \n nextword".to_string())
-        )
+    fn it_gets_idents_with_whitespace() {
+        let response = get_ident("test \n nextword");
+        assert_eq!(response, (Ident("test"), " \n nextword"))
     }
 
     #[test]
     fn it_lexes_first_token_in_two_steps() {
-        let response = get_next_token("1234;".to_string()).unwrap();
-        assert_eq!(response, (Int(1234), ";".to_string()))
+        let response = get_next_token("1234;").unwrap();
+        assert_eq!(response, (Int(1234), ";"))
     }
 
     #[test]
     fn it_lexes_two_token_string() {
-        let response = lex_string("1234;".to_string());
+        let response = lex_string("1234;");
         assert_eq!(response, vec![Int(1234), Semicolon])
     }
 
     #[test]
+    fn it_lexes_identifier_and_semicolon() {
+        let response = lex_string("firstvar;");
+        assert_eq!(response, vec![Ident("firstvar"), Semicolon])
+    }
+
+    #[test]
     fn it_ignores_whitespace() {
-        let (result, _) = get_next_token("   \n\n  test  \n   nextword".to_string()).unwrap();
-        assert_eq!(result, Ident("test".to_string()));
+        let (result, _) = get_next_token("   \n\n  test  \n   nextword").unwrap();
+        assert_eq!(result, Ident("test"));
     }
 
     #[test]
     fn it_lexes_test_line() {
-        let response = lex_string("firstvar = 123".to_string());
-        assert_eq!(
-            response,
-            vec![Ident("firstvar".to_string()), Assign, Int(123)]
-        )
+        let response = lex_string("firstvar = 123");
+        assert_eq!(response, vec![Ident("firstvar"), Assign, Int(123)])
     }
 
     #[test]
     fn it_skips_invalid_chars() {
-        let (result, _) = get_next_token(".523.3".to_string()).unwrap();
+        let (result, _) = get_next_token(".523.3").unwrap();
         assert_eq!(result, Invalid('.'))
     }
 
