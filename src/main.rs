@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{fmt::Debug, fs, str::Chars};
+use std::{fmt::Debug, fs};
 
 extern crate pretty_env_logger;
 #[macro_use]
@@ -80,15 +80,23 @@ fn get_next_token(remaining_string: &str) -> Option<(Token, &str)> {
 }
 
 fn get_ident(ident_and_remaining: &str) -> (Token, &str) {
+    let mut remaining_chars = ident_and_remaining.chars().enumerate();
+    if let Some((_, 'a'..='z' | 'A'..='Z' | '_' | '$')) = remaining_chars.next() {
+        ();
+    } else {
+        panic!("Not a valid identifier");
+    }
     let mut identifier = "";
     let mut result = (Token::Default, ident_and_remaining);
-    for (identifier_end, character) in ident_and_remaining.chars().enumerate() {
+    for (identifier_end, character) in remaining_chars {
         match character {
-            'a'..='z' | 'A'..='Z' | '_' | '$' if identifier_end == result.1.len() - 1 => {
+            'a'..='z' | 'A'..='Z' | '_' | '$' | '0'..='9'
+                if identifier_end == ident_and_remaining.len() - 1 =>
+            {
                 result = (Token::Ident(&ident_and_remaining[..identifier_end + 1]), "");
                 break;
             }
-            'a'..='z' | 'A'..='Z' | '_' | '$' => (),
+            'a'..='z' | 'A'..='Z' | '_' | '$' | '0'..='9' => (),
             _ => {
                 let ident_and_remaining = ident_and_remaining;
                 identifier = &ident_and_remaining[..identifier_end];
@@ -112,13 +120,10 @@ fn get_ident(ident_and_remaining: &str) -> (Token, &str) {
 }
 
 fn get_number(number_and_remaining: &str) -> (Token, &str) {
-    dbg!(number_and_remaining);
     let mut number_type = Token::Int(0);
     let mut remaining = "";
     let mut number = "";
     let number_and_enumeration = number_and_remaining.chars().enumerate();
-    dbg!(&number_and_enumeration);
-    dbg!(number_and_remaining.len());
     for (number_end, character) in number_and_enumeration {
         match character {
             '.' => {
@@ -134,13 +139,10 @@ fn get_number(number_and_remaining: &str) -> (Token, &str) {
             '0'..='9' if number_end == number_and_remaining.len() - 1 => {
                 number = &number_and_remaining[..number_end + 1];
                 remaining = "";
-                dbg!(number_end);
                 break;
             }
             '0'..='9' => (),
             _ => {
-                dbg!(number_end);
-                dbg!(remaining);
                 number = &number_and_remaining[..number_end];
                 remaining = &number_and_remaining[number_end..];
                 break;
@@ -155,12 +157,10 @@ fn get_number(number_and_remaining: &str) -> (Token, &str) {
 }
 
 fn parse_float(number: &str) -> Token {
-    dbg!("Trying to parse: {}", number);
     Token::Float(number.parse().expect("Number should be a parseable float"))
 }
 
 fn parse_int(number: &str) -> Token {
-    dbg!("Trying to parse: {}", number);
     Token::Int(number.parse().expect("Number should be a parseable int"))
 }
 
@@ -241,5 +241,15 @@ mod tests {
         assert_eq!(result, Invalid('.'))
     }
 
-    // TODO: Grammar allows for identifiers with numbers at the end
+    #[test]
+    fn it_allows_ident_with_number() {
+        let result = get_ident("var3");
+        assert_eq!(result, (Ident("var3"), ""))
+    }
+
+    #[test]
+    #[should_panic]
+    fn ident_starting_with_number_invalid() {
+        get_ident("3var");
+    }
 }
