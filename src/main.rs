@@ -47,24 +47,14 @@ fn read_file(path: &str) {
 
 fn lex_string(mut remaining_string: &str) -> Vec<Token> {
     let mut tokens = vec![];
-    // TODO: Refactor without the possibility of an infinite loop
-    loop {
-        let result = get_next_token(remaining_string);
-        remaining_string = if let Some(LexStep {
-            token,
-            remaining_to_lex: string,
-        }) = result
-        {
-            if token == Token::Ident("") {
-                error!("Infinite loop. Remaining: {}", string);
-                break;
-            }
-            debug!("Adding token: {}", token);
-            tokens.push(token);
-            string
-        } else {
+    while let Some(result) = get_next_token(remaining_string) {
+        if result.token == Token::Ident("") {
+            error!("Infinite loop. Remaining: {}", result.remaining_to_lex);
             break;
         }
+        debug!("Adding token: {}", result.token);
+        remaining_string = result.remaining_to_lex;
+        tokens.push(result.token);
     }
     tokens
 }
