@@ -6,5 +6,5 @@ Uses the grammar found here: https://github.com/dempseyucla/232_SCANNER/blob/mas
 
 By default it will lex the script found in `testfiles/input.txt`, change this file to see different output.
 
-Run with `cargo run`
+Run with `cargo run`  
 Run tests with `cargo test`
