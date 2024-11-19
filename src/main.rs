@@ -1,5 +1,10 @@
 use core::fmt;
-use std::{fmt::Debug, fs};
+use std::{
+    env,
+    fmt::Debug,
+    fs,
+    io::{self, stdout, Write},
+};
 
 extern crate pretty_env_logger;
 #[macro_use]
@@ -26,6 +31,7 @@ enum Token<'a> {
     Ident(&'a str),
     Invalid(char),
     Default,
+    Quit,
 }
 
 impl<'a> fmt::Display for Token<'a> {
@@ -34,15 +40,63 @@ impl<'a> fmt::Display for Token<'a> {
     }
 }
 
-fn main() {
-    pretty_env_logger::init();
-    read_file("testfiles/input.txt");
+enum ProgramMode {
+    UserInput,
+    FilePath(String),
 }
 
-fn read_file(path: &str) {
+impl ProgramMode {
+    pub fn build(mut args: impl Iterator<Item = String>) -> ProgramMode {
+        // first arg is the program name
+        args.next();
+        if let Some(file_path) = args.next() {
+            ProgramMode::FilePath(file_path)
+        } else {
+            ProgramMode::UserInput
+        }
+    }
+}
+
+fn main() {
+    pretty_env_logger::init();
+    match ProgramMode::build(env::args()) {
+        ProgramMode::UserInput => read_lines(),
+        ProgramMode::FilePath(file_path) => read_file(file_path),
+    };
+}
+
+fn read_file(path: String) {
+    // TODO: More robust error handling for bad file path
     let contents = fs::read_to_string(path).expect("Should have been able to read the file");
     let tokens = lex_string(&contents);
-    print_tokens(tokens);
+    // result can be ignored in file-reading mode
+    let _ = print_tokens(tokens);
+}
+
+fn read_lines() {
+    print!("lexer $ ");
+    stdout()
+        .flush()
+        .expect("Next line should have been writable");
+    loop {
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .expect("User input should have been readable");
+        let tokens = lex_string(input.as_str());
+        match print_tokens(tokens) {
+            Ok(()) => {
+                print!("\nlexer $ ");
+                stdout()
+                    .flush()
+                    .expect("Next line should have been writable");
+            }
+            Err(_) => {
+                println!("quitting...");
+                break;
+            }
+        }
+    }
 }
 
 fn lex_string(mut remaining_string: &str) -> Vec<Token> {
@@ -127,6 +181,7 @@ fn get_ident(ident_and_remaining: &str) -> LexStep {
         token: match identifier {
             "print" => Token::Print,
             "repeat" => Token::Repeat,
+            "quit" => Token::Quit, // not technically a token, but a command to the lexer to exit.
             _ => result.token,
         },
         remaining_to_lex: result.remaining_to_lex,
@@ -187,10 +242,15 @@ fn parse_int(number: &str) -> Token {
     Token::Int(number.parse().expect("Number should be a parseable int"))
 }
 
-fn print_tokens(tokens: Vec<Token>) {
+fn print_tokens(tokens: Vec<Token>) -> Result<(), Token> {
     for token in tokens {
-        println!("{}", token);
+        if token == Token::Quit {
+            return Err(Token::Quit);
+        } else {
+            println!("{}", token);
+        }
     }
+    Ok(())
 }
 
 #[cfg(test)]
