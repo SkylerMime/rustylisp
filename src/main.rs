@@ -66,11 +66,13 @@ fn main() {
 }
 
 fn read_file(path: String) {
-    // TODO: More robust error handling for bad file path
-    let contents = fs::read_to_string(path).expect("Should have been able to read the file");
-    let tokens = lex_string(&contents);
-    // result can be ignored in file-reading mode
-    let _ = print_tokens(tokens);
+    if let Ok(contents) = fs::read_to_string(path.clone()) {
+        let tokens = lex_string(&contents);
+        // result can be ignored in file-reading mode
+        let _ = print_tokens(tokens);
+    } else {
+        println!("Fatal: File {} not found", path);
+    }
 }
 
 fn read_lines() {
