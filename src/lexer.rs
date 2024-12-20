@@ -1,3 +1,5 @@
+extern crate pretty_env_logger;
+
 use core::fmt;
 use std::{
     fmt::Debug,
@@ -5,23 +7,24 @@ use std::{
     io::{self, stdout, Write},
 };
 
-extern crate pretty_env_logger;
-#[macro_use]
-extern crate log;
-
-pub enum ProgramMode {
+pub enum InputMode {
     UserInput,
     FilePath(String),
 }
 
-impl ProgramMode {
-    pub fn build(mut args: impl Iterator<Item = String>) -> ProgramMode {
+pub enum ProgramMode {
+    Lex,
+    Parse,
+}
+
+impl InputMode {
+    pub fn build(mut args: impl Iterator<Item = String>) -> InputMode {
         // first arg is the program name
         args.next();
         if let Some(file_path) = args.next() {
-            ProgramMode::FilePath(file_path)
+            InputMode::FilePath(file_path)
         } else {
-            ProgramMode::UserInput
+            InputMode::UserInput
         }
     }
 }
@@ -248,8 +251,8 @@ fn print_tokens(tokens: Vec<Token>) -> Result<(), Token> {
 
 #[cfg(test)]
 mod tests {
+    use super::Token::*;
     use super::*;
-    use crate::Token::*;
 
     #[test]
     fn it_gets_ints() {
