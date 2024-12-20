@@ -12,11 +12,6 @@ pub enum InputMode {
     FilePath(String),
 }
 
-pub enum ProgramMode {
-    Lex,
-    Parse,
-}
-
 impl InputMode {
     pub fn build(mut args: impl Iterator<Item = String>) -> InputMode {
         // first arg is the program name
@@ -38,19 +33,35 @@ struct LexStep<'a> {
 #[derive(Debug, PartialEq)]
 enum Token<'a> {
     Int(u32),
-    Float(f32),
-    AddOp(char),
-    MultOp(char),
-    Semicolon,
+    Double(f32),
     LeftParen,
     RightParen,
-    Assign,
-    Print,
-    Repeat,
     Ident(&'a str),
+    Func(FuncType),
+    Quit,
+    // TODO: Are these two needed?
     Invalid(char),
     Default,
-    Quit,
+}
+
+#[derive(Debug, PartialEq)]
+enum FuncType {
+    Neg,
+    Abs,
+    Add,
+    Sub,
+    Mult,
+    Div,
+    Remainder,
+    Exp,
+    Exp2,
+    Pow,
+    Log,
+    Sqrt,
+    Cbrt,
+    Hypot,
+    Max,
+    Min,
 }
 
 impl<'a> fmt::Display for Token<'a> {
@@ -114,16 +125,12 @@ fn get_next_token(remaining_string: &str) -> Option<LexStep> {
     let mut remaining_chars = remaining_string.chars();
     if let Some(first_char) = remaining_chars.nth(0) {
         Some(match first_char {
-            'a'..='z' | 'A'..='Z' | '_' | '$' => get_ident(remaining_string),
+            'a'..='z' | 'A'..='Z' | '_' | '$' => get_ident_or_function(remaining_string),
             '0'..='9' => get_number(remaining_string),
             _ => {
                 // Token is a single character
                 LexStep {
                     token: match first_char {
-                        '+' | '-' => Token::AddOp(first_char),
-                        '*' | '/' | '%' => Token::MultOp(first_char),
-                        ';' => Token::Semicolon,
-                        '=' => Token::Assign,
                         '(' => Token::LeftParen,
                         ')' => Token::RightParen,
                         _ => Token::Invalid(first_char),
@@ -137,7 +144,8 @@ fn get_next_token(remaining_string: &str) -> Option<LexStep> {
     }
 }
 
-fn get_ident(ident_and_remaining: &str) -> LexStep {
+// NOTE: Identifiers aren't used on the current step but will be soon
+fn get_ident_or_function(ident_and_remaining: &str) -> LexStep {
     let mut remaining_chars = ident_and_remaining.chars().enumerate();
     if let Some((_, 'a'..='z' | 'A'..='Z' | '_' | '$')) = remaining_chars.next() {
         ();
@@ -172,11 +180,25 @@ fn get_ident(ident_and_remaining: &str) -> LexStep {
             }
         };
     }
-    // Confim identifier is not a reserved keyword
+    // See if identifier is a reserved function
     LexStep {
         token: match identifier {
-            "print" => Token::Print,
-            "repeat" => Token::Repeat,
+            "neg" => Token::Func(FuncType::Neg),
+            "abs" => Token::Func(FuncType::Abs),
+            "add" => Token::Func(FuncType::Add),
+            "sub" => Token::Func(FuncType::Sub),
+            "mult" => Token::Func(FuncType::Mult),
+            "div" => Token::Func(FuncType::Div),
+            "remainder" => Token::Func(FuncType::Remainder),
+            "exp" => Token::Func(FuncType::Exp),
+            "exp2" => Token::Func(FuncType::Exp2),
+            "pow" => Token::Func(FuncType::Pow),
+            "log" => Token::Func(FuncType::Log),
+            "sqrt" => Token::Func(FuncType::Sqrt),
+            "cbrt" => Token::Func(FuncType::Cbrt),
+            "hypot" => Token::Func(FuncType::Hypot),
+            "max" => Token::Func(FuncType::Max),
+            "min" => Token::Func(FuncType::Min),
             "quit" => Token::Quit, // not technically a token, but a command to the lexer to exit.
             _ => result.token,
         },
@@ -193,7 +215,7 @@ fn get_number(number_and_remaining: &str) -> LexStep {
         match character {
             '.' => {
                 if number_type == Token::Int(0) {
-                    number_type = Token::Float(0.0);
+                    number_type = Token::Double(0.0);
                 } else {
                     error!(
                         "Valid numbers should have no more than one decimal point, token invalid"
@@ -217,9 +239,9 @@ fn get_number(number_and_remaining: &str) -> LexStep {
             }
         }
     }
-    if number_type == Token::Float(0.0) {
+    if number_type == Token::Double(0.0) {
         LexStep {
-            token: parse_float(number),
+            token: parse_double(number),
             remaining_to_lex: remaining,
         }
     } else {
@@ -230,8 +252,8 @@ fn get_number(number_and_remaining: &str) -> LexStep {
     }
 }
 
-fn parse_float(number: &str) -> Token {
-    Token::Float(number.parse().expect("Number should be a parseable float"))
+fn parse_double(number: &str) -> Token {
+    Token::Double(number.parse().expect("Number should be a parseable double"))
 }
 
 fn parse_int(number: &str) -> Token {
@@ -267,14 +289,14 @@ mod tests {
     }
 
     #[test]
-    fn it_gets_floats() {
+    fn it_gets_doubles() {
         let result = get_number("1234.5678");
-        assert_eq!(result.token, Float(1234.5678));
+        assert_eq!(result.token, Double(1234.5678));
     }
 
     #[test]
     fn it_gets_idents() {
-        let result = get_ident("test$_ABC");
+        let result = get_ident_or_function("test$_ABC");
         assert_eq!(
             result,
             LexStep {
@@ -286,7 +308,7 @@ mod tests {
 
     #[test]
     fn it_gets_idents_with_whitespace() {
-        let response = get_ident("test \n nextword");
+        let response = get_ident_or_function("test \n nextword");
         assert_eq!(
             response,
             LexStep {
@@ -310,14 +332,14 @@ mod tests {
 
     #[test]
     fn it_lexes_two_token_string() {
-        let response = lex_string("1234;");
-        assert_eq!(response, vec![Int(1234), Semicolon])
+        let response = lex_string("1234)");
+        assert_eq!(response, vec![Int(1234), RightParen])
     }
 
     #[test]
-    fn it_lexes_identifier_and_semicolon() {
-        let response = lex_string("firstvar;");
-        assert_eq!(response, vec![Ident("firstvar"), Semicolon])
+    fn it_lexes_identifier_and_right_paren() {
+        let response = lex_string("firstvar)");
+        assert_eq!(response, vec![Ident("firstvar"), RightParen])
     }
 
     #[test]
@@ -328,8 +350,17 @@ mod tests {
 
     #[test]
     fn it_lexes_test_line() {
-        let response = lex_string("firstvar = 123");
-        assert_eq!(response, vec![Ident("firstvar"), Assign, Int(123)])
+        let response = lex_string("(add firstvar 123)");
+        assert_eq!(
+            response,
+            vec![
+                LeftParen,
+                Func(FuncType::Add),
+                Ident("firstvar"),
+                Int(123),
+                RightParen
+            ]
+        )
     }
 
     #[test]
@@ -340,7 +371,7 @@ mod tests {
 
     #[test]
     fn it_allows_ident_with_number() {
-        let result = get_ident("var3");
+        let result = get_ident_or_function("var3");
         assert_eq!(
             result,
             LexStep {
@@ -353,6 +384,6 @@ mod tests {
     #[test]
     #[should_panic]
     fn ident_starting_with_number_invalid() {
-        get_ident("3var");
+        get_ident_or_function("3var");
     }
 }

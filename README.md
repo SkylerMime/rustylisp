@@ -1,10 +1,10 @@
 # Rust Lexer
 
-Rust implementation of a lexer originally written in C.
+Rust implementation of a parser project originally written in C.
 
-Uses the grammar found here: https://github.com/dempseyucla/232_SCANNER/blob/master/Project_1/Project_1.md
+Based on these project instructions: https://github.com/dempseyucla/232_CILISP/tree/master
 
-By default it will lex the script found in `testfiles/input.txt`, change this file to see different output.
+Can either parse a file or stdin.
 
-Run with `cargo run`  
+Run with `cargo run [filepath]`
 Run tests with `cargo test`
