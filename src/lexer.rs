@@ -31,9 +31,14 @@ struct LexStep<'a> {
 }
 
 #[derive(Debug, PartialEq)]
-enum Token<'a> {
+pub enum AstNumber {
     Int(u32),
     Double(f32),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Token<'a> {
+    Number(AstNumber),
     LeftParen,
     RightParen,
     Ident(&'a str),
@@ -45,7 +50,7 @@ enum Token<'a> {
 }
 
 #[derive(Debug, PartialEq)]
-enum FuncType {
+pub enum FuncType {
     Neg,
     Abs,
     Add,
@@ -207,15 +212,15 @@ fn get_ident_or_function(ident_and_remaining: &str) -> LexStep {
 }
 
 fn get_number(number_and_remaining: &str) -> LexStep {
-    let mut number_type = Token::Int(0);
+    let mut number_type = AstNumber::Int(0);
     let mut remaining = "";
     let mut number = "";
     let number_and_enumeration = number_and_remaining.chars().enumerate();
     for (number_end, character) in number_and_enumeration {
         match character {
             '.' => {
-                if number_type == Token::Int(0) {
-                    number_type = Token::Double(0.0);
+                if number_type == AstNumber::Int(0) {
+                    number_type = AstNumber::Double(0.0);
                 } else {
                     error!(
                         "Valid numbers should have no more than one decimal point, token invalid"
@@ -239,7 +244,7 @@ fn get_number(number_and_remaining: &str) -> LexStep {
             }
         }
     }
-    if number_type == Token::Double(0.0) {
+    if number_type == AstNumber::Double(0.0) {
         LexStep {
             token: parse_double(number),
             remaining_to_lex: remaining,
@@ -253,11 +258,15 @@ fn get_number(number_and_remaining: &str) -> LexStep {
 }
 
 fn parse_double(number: &str) -> Token {
-    Token::Double(number.parse().expect("Number should be a parseable double"))
+    Token::Number(AstNumber::Double(
+        number.parse().expect("Number should be a parseable double"),
+    ))
 }
 
 fn parse_int(number: &str) -> Token {
-    Token::Int(number.parse().expect("Number should be a parseable int"))
+    Token::Number(AstNumber::Int(
+        number.parse().expect("Number should be a parseable int"),
+    ))
 }
 
 fn print_tokens(tokens: Vec<Token>) -> Result<(), Token> {
@@ -273,25 +282,26 @@ fn print_tokens(tokens: Vec<Token>) -> Result<(), Token> {
 
 #[cfg(test)]
 mod tests {
+    use super::AstNumber::*;
     use super::Token::*;
     use super::*;
 
     #[test]
     fn it_gets_ints() {
         let result = get_number("1234");
-        assert_eq!(result.token, Int(1234));
+        assert_eq!(result.token, Number(Int(1234)));
     }
 
     #[test]
     fn it_lexes_ints() {
         let result = get_next_token("1234").unwrap();
-        assert_eq!(result.token, Int(1234));
+        assert_eq!(result.token, Number(Int(1234)));
     }
 
     #[test]
     fn it_gets_doubles() {
         let result = get_number("1234.5678");
-        assert_eq!(result.token, Double(1234.5678));
+        assert_eq!(result.token, Number(Double(1234.5678)));
     }
 
     #[test]
@@ -324,7 +334,7 @@ mod tests {
         assert_eq!(
             response,
             LexStep {
-                token: Int(1234),
+                token: Number(Int(1234)),
                 remaining_to_lex: ";"
             }
         )
@@ -333,7 +343,7 @@ mod tests {
     #[test]
     fn it_lexes_two_token_string() {
         let response = lex_string("1234)");
-        assert_eq!(response, vec![Int(1234), RightParen])
+        assert_eq!(response, vec![Number(Int(1234)), RightParen])
     }
 
     #[test]
@@ -357,7 +367,7 @@ mod tests {
                 LeftParen,
                 Func(FuncType::Add),
                 Ident("firstvar"),
-                Int(123),
+                Number(Int(123)),
                 RightParen
             ]
         )

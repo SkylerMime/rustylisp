@@ -1,4 +1,5 @@
 mod lexer;
+mod parser;
 
 #[macro_use]
 extern crate log;
