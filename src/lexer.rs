@@ -1,3 +1,4 @@
+use std::str::FromStr;
 extern crate pretty_env_logger;
 
 use core::fmt;
@@ -6,6 +7,8 @@ use std::{
     fs,
     io::{self, stdout, Write},
 };
+
+use strum_macros::EnumString;
 
 pub enum InputMode {
     UserInput,
@@ -30,7 +33,7 @@ struct LexStep<'a> {
     remaining_to_lex: &'a str,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum AstNumber {
     Int(u32),
     Double(f32),
@@ -49,21 +52,39 @@ pub enum Token<'a> {
     Default,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum FuncType {
+    Unary(Unary),
+    Binary(Binary),
+    NAry(NAry),
+}
+
+#[derive(Debug, PartialEq, EnumString, Clone)]
+#[strum(serialize_all = "lowercase")]
+pub enum Unary {
     Neg,
     Abs,
-    Add,
-    Sub,
-    Mult,
-    Div,
-    Remainder,
     Exp,
     Exp2,
-    Pow,
     Log,
     Sqrt,
     Cbrt,
+}
+
+#[derive(Debug, PartialEq, EnumString, Clone)]
+#[strum(serialize_all = "lowercase")]
+pub enum Binary {
+    Sub,
+    Div,
+    Remainder,
+    Pow,
+}
+
+#[derive(Debug, PartialEq, EnumString, Clone)]
+#[strum(serialize_all = "lowercase")]
+pub enum NAry {
+    Add,
+    Mult,
     Hypot,
     Max,
     Min,
@@ -187,25 +208,17 @@ fn get_ident_or_function(ident_and_remaining: &str) -> LexStep {
     }
     // See if identifier is a reserved function
     LexStep {
-        token: match identifier {
-            "neg" => Token::Func(FuncType::Neg),
-            "abs" => Token::Func(FuncType::Abs),
-            "add" => Token::Func(FuncType::Add),
-            "sub" => Token::Func(FuncType::Sub),
-            "mult" => Token::Func(FuncType::Mult),
-            "div" => Token::Func(FuncType::Div),
-            "remainder" => Token::Func(FuncType::Remainder),
-            "exp" => Token::Func(FuncType::Exp),
-            "exp2" => Token::Func(FuncType::Exp2),
-            "pow" => Token::Func(FuncType::Pow),
-            "log" => Token::Func(FuncType::Log),
-            "sqrt" => Token::Func(FuncType::Sqrt),
-            "cbrt" => Token::Func(FuncType::Cbrt),
-            "hypot" => Token::Func(FuncType::Hypot),
-            "max" => Token::Func(FuncType::Max),
-            "min" => Token::Func(FuncType::Min),
-            "quit" => Token::Quit, // not technically a token, but a command to the lexer to exit.
-            _ => result.token,
+        // TODO: Try rewriting as match expression
+        token: if let Ok(func_token) = Unary::from_str(identifier) {
+            Token::Func(FuncType::Unary(func_token))
+        } else if let Ok(func_token) = Binary::from_str(identifier) {
+            Token::Func(FuncType::Binary(func_token))
+        } else if let Ok(func_token) = NAry::from_str(identifier) {
+            Token::Func(FuncType::NAry(func_token))
+        } else if identifier == "quit" {
+            Token::Quit
+        } else {
+            result.token
         },
         remaining_to_lex: result.remaining_to_lex,
     }
@@ -365,7 +378,7 @@ mod tests {
             response,
             vec![
                 LeftParen,
-                Func(FuncType::Add),
+                Func(FuncType::NAry(NAry::Add)),
                 Ident("firstvar"),
                 Number(Int(123)),
                 RightParen
