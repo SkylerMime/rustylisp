@@ -26,14 +26,20 @@ fn parse_f_expr<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNod
     if let Some(Token::LeftParen) = tokens.next() {
         if let Some(Token::Func(func_token)) = tokens.next() {
             let operands = match func_token {
-                FuncType::Unary(_) => vec![parse_one_arg(tokens).expect("TODO: Full error check")],
-                FuncType::Binary(_) => parse_two_args(tokens).expect("TODO: Full error check"),
-                FuncType::NAry(_) => parse_many_args(tokens).expect("TODO: Full error check"),
+                FuncType::Unary(_) => match parse_one_arg(tokens) {
+                    Ok(parsed_arg) => Ok(vec![parsed_arg]),
+                    Err(error) => Err(error),
+                },
+                FuncType::Binary(_) => parse_two_args(tokens),
+                FuncType::NAry(_) => parse_many_args(tokens),
             };
-            Ok(AstNode::FuncNode(AstFunction {
-                func: func_token.clone(),
-                operands,
-            }))
+            match operands {
+                Ok(operands) => Ok(AstNode::FuncNode(AstFunction {
+                    func: func_token.clone(),
+                    operands,
+                })),
+                Err(error) => Err(error),
+            }
         } else {
             Err("The first word is not a known function")
         }
@@ -93,6 +99,24 @@ fn parse_s_expr<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNod
         }
         Some(Token::LeftParen) => parse_f_expr(tokens),
         _ => Err("Unexpected token for s_expr"),
+    }
+}
+
+pub fn print_abstract_syntax_tree(root: AstNode, indentation: i32) {
+    let mut indentation_marker = String::new();
+    for _ in 0..indentation {
+        indentation_marker.push_str("| ");
+    }
+    match root {
+        AstNode::FuncNode(function) => {
+            println!("{}{:?}", indentation_marker, function.func);
+            for operand in function.operands {
+                print_abstract_syntax_tree(operand, indentation + 1);
+            }
+        }
+        AstNode::NumNode(number) => {
+            println!("{}{:?}", indentation_marker, number);
+        }
     }
 }
 

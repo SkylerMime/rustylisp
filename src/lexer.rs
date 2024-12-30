@@ -10,6 +10,8 @@ use std::{
 
 use strum_macros::EnumString;
 
+use crate::parser::{parse_tokens, print_abstract_syntax_tree};
+
 pub enum InputMode {
     UserInput,
     FilePath(String),
@@ -100,14 +102,14 @@ pub fn read_file(path: String) {
     if let Ok(contents) = fs::read_to_string(path.clone()) {
         let tokens = lex_string(&contents);
         // result can be ignored in file-reading mode
-        let _ = print_tokens(tokens);
+        let _ = print_tokens(&tokens);
     } else {
         println!("Fatal: File {} not found", path);
     }
 }
 
 pub fn read_lines() {
-    print!("lexer $ ");
+    print!("parser $ ");
     stdout()
         .flush()
         .expect("Next line should have been writable");
@@ -117,18 +119,27 @@ pub fn read_lines() {
             .read_line(&mut input)
             .expect("User input should have been readable");
         let tokens = lex_string(input.as_str());
-        match print_tokens(tokens) {
+        match print_tokens(&tokens) {
             Ok(()) => {
-                print!("\nlexer $ ");
-                stdout()
-                    .flush()
-                    .expect("Next line should have been writable");
+                println!();
             }
             Err(_) => {
                 println!("quitting...");
                 break;
             }
         }
+        match parse_tokens(&mut tokens.iter().peekable()) {
+            Ok(root) => {
+                print_abstract_syntax_tree(root, 0);
+            }
+            Err(error_message) => {
+                println!("Parsing Error: {}", error_message);
+            }
+        }
+        print!("\nparser $ ");
+        stdout()
+            .flush()
+            .expect("Next line should have been writable");
     }
 }
 
@@ -282,9 +293,9 @@ fn parse_int(number: &str) -> Token {
     ))
 }
 
-fn print_tokens(tokens: Vec<Token>) -> Result<(), Token> {
+fn print_tokens<'a>(tokens: &Vec<Token>) -> Result<(), Token<'a>> {
     for token in tokens {
-        if token == Token::Quit {
+        if *token == Token::Quit {
             return Err(Token::Quit);
         } else {
             println!("{}", token);
