@@ -1,16 +1,16 @@
 use std::{iter::Peekable, slice::Iter};
 
-use crate::lexer::{AstNumber, Token};
+use crate::lexer::{AstNumber, NAry, Token};
 
 use super::lexer::FuncType;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum AstNode {
     NumNode(AstNumber),
     FuncNode(AstFunction),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct AstFunction {
     func: FuncType,
     operands: Vec<AstNode>,
@@ -120,9 +120,63 @@ pub fn print_abstract_syntax_tree(root: AstNode, indentation: i32) {
     }
 }
 
+pub fn eval(root: &AstNode) -> Result<AstNumber, String> {
+    eval_s_expr(root)
+}
+
+fn eval_s_expr(s_expr: &AstNode) -> Result<AstNumber, String> {
+    match s_expr {
+        AstNode::FuncNode(function) => eval_function(function),
+        AstNode::NumNode(number) => Ok(number.clone()),
+    }
+}
+
+fn eval_function(function: &AstFunction) -> Result<AstNumber, String> {
+    match function.func.clone() {
+        FuncType::NAry(func_type) => match func_type {
+            NAry::Add => {
+                // TODO: Rework without extra clone / multiple streams
+                let maybe_additions = function.operands.iter().map(|op| eval_s_expr(op));
+                if maybe_additions
+                    .clone()
+                    .any(|evaluation| evaluation.is_err())
+                {
+                    return Err(maybe_additions
+                        .filter(|evaluation| evaluation.is_err())
+                        .map(|err| err.unwrap_err())
+                        .collect());
+                };
+                maybe_additions
+                    .map(|some_num| some_num.expect("These should all be 'Some' entries."))
+                    .reduce(|a, b| add(a, b))
+                    .ok_or_else(|| String::from("The arguments should not be empty"))
+            }
+            _ => {
+                return Err(String::from("NAry function not implemented"));
+            }
+        },
+        _ => {
+            return Err(String::from("Function not yet implemented"));
+        }
+    }
+}
+
+fn add(a: AstNumber, b: AstNumber) -> AstNumber {
+    match (a, b) {
+        (AstNumber::Int(first), AstNumber::Int(second)) => AstNumber::Int(first + second),
+        (AstNumber::Int(first), AstNumber::Double(second)) => {
+            AstNumber::Double(first as f32 + second)
+        }
+        (AstNumber::Double(first), AstNumber::Int(second)) => {
+            AstNumber::Double(first + second as f32)
+        }
+        (AstNumber::Double(first), AstNumber::Double(second)) => AstNumber::Double(first + second),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::parser::{parse_tokens, AstFunction, AstNode::*, AstNumber::*};
+    use crate::parser::{eval, parse_tokens, AstFunction, AstNode::*, AstNumber::*};
 
     use super::super::lexer::{Binary::*, FuncType::*, NAry::*, Token::*, Unary::*};
 
@@ -218,5 +272,15 @@ mod tests {
             parse_tokens(&mut tokens).expect("It should parse without throwing an error."),
             tree_result
         )
+    }
+
+    #[test]
+    fn it_evaluates_add_function() {
+        let add_tree = FuncNode(AstFunction {
+            func: NAry(Add),
+            operands: vec![NumNode(Double(1.5)), NumNode(Int(8)), NumNode(Int(2))],
+        });
+
+        assert_eq!(eval(&add_tree), Ok(Double(11.5)))
     }
 }

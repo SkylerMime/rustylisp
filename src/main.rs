@@ -4,15 +4,21 @@ mod parser;
 #[macro_use]
 extern crate log;
 
+use lexer::print_help_message;
 use lexer::read_file;
 use lexer::read_lines;
 use lexer::InputMode;
+use lexer::ProgramMode;
 use std::env;
 
 fn main() {
     pretty_env_logger::init();
-    match InputMode::build(env::args()) {
-        InputMode::UserInput => read_lines(),
-        InputMode::FilePath(file_path) => read_file(file_path),
-    };
+    if let Some(program_mode) = ProgramMode::build(env::args()) {
+        match program_mode.input_mode {
+            InputMode::UserInput => read_lines(program_mode),
+            InputMode::FilePath(file_path) => read_file(file_path),
+        };
+    } else {
+        print_help_message();
+    }
 }

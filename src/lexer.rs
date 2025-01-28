@@ -10,22 +10,58 @@ use std::{
 
 use strum_macros::EnumString;
 
-use crate::parser::{parse_tokens, print_abstract_syntax_tree};
+use crate::parser::{eval, parse_tokens, print_abstract_syntax_tree};
 
+#[derive(Debug, PartialEq)]
 pub enum InputMode {
     UserInput,
     FilePath(String),
 }
 
-impl InputMode {
-    pub fn build(mut args: impl Iterator<Item = String>) -> InputMode {
-        // first arg is the program name
-        args.next();
-        if let Some(file_path) = args.next() {
-            InputMode::FilePath(file_path)
+#[derive(Debug, PartialEq)]
+pub struct ProgramMode {
+    pub input_mode: InputMode,
+    pub lex: bool,
+    pub parse: bool,
+    pub eval: bool,
+}
+
+impl ProgramMode {
+    pub fn build(mut args: impl Iterator<Item = String>) -> Option<ProgramMode> {
+        let mut program_mode = ProgramMode {
+            input_mode: InputMode::UserInput,
+            lex: false,
+            parse: false,
+            eval: false,
+        };
+        // first arg should be the program name
+        if let None = args.next() {
+            None
         } else {
-            InputMode::UserInput
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "-l" | "--lex" => program_mode.lex = true,
+                    "-p" | "--parse" => program_mode.parse = true,
+                    "-e" | "--eval" => program_mode.eval = true,
+                    filepath => {
+                        if program_mode.input_mode == InputMode::UserInput {
+                            program_mode.input_mode = InputMode::FilePath(filepath.to_string())
+                        } else {
+                            return None;
+                        }
+                    }
+                }
+            }
+            if program_mode.any_option_selected() {
+                Some(program_mode)
+            } else {
+                None
+            }
         }
+    }
+
+    fn any_option_selected(&self) -> bool {
+        return self.eval || self.parse || self.eval;
     }
 }
 
@@ -39,6 +75,16 @@ struct LexStep<'a> {
 pub enum AstNumber {
     Int(u32),
     Double(f32),
+}
+
+impl fmt::Display for AstNumber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let inner = match self {
+            AstNumber::Int(inner) => inner.to_string(),
+            AstNumber::Double(inner) => inner.to_string(),
+        };
+        write!(f, "{}", inner)
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -108,7 +154,7 @@ pub fn read_file(path: String) {
     }
 }
 
-pub fn read_lines() {
+pub fn read_lines(program_mode: ProgramMode) {
     print!("parser $ ");
     stdout()
         .flush()
@@ -119,18 +165,30 @@ pub fn read_lines() {
             .read_line(&mut input)
             .expect("User input should have been readable");
         let tokens = lex_string(input.as_str());
-        match print_tokens(&tokens) {
-            Ok(()) => {
-                println!();
-            }
-            Err(_) => {
-                println!("quitting...");
-                break;
+        if program_mode.lex {
+            match print_tokens(&tokens) {
+                Ok(()) => {
+                    println!();
+                }
+                Err(_) => {
+                    println!("quitting...");
+                    break;
+                }
             }
         }
+
         match parse_tokens(&mut tokens.iter().peekable()) {
             Ok(root) => {
-                print_abstract_syntax_tree(root, 0);
+                if program_mode.parse {
+                    print_abstract_syntax_tree(root.clone(), 0);
+                    println!();
+                }
+                if program_mode.eval {
+                    match eval(&root) {
+                        Ok(parse_result) => println!("=> {}", parse_result),
+                        Err(msg) => println!("Evaluation Error: {}", msg),
+                    }
+                }
             }
             Err(error_message) => {
                 println!("Parsing Error: {}", error_message);
@@ -141,6 +199,10 @@ pub fn read_lines() {
             .flush()
             .expect("Next line should have been writable");
     }
+}
+
+pub fn print_help_message() {
+    println!("Usage: parser [-l | --lex] [-p | --parse] [-e | --eval] [filepath]")
 }
 
 fn lex_string(mut remaining_string: &str) -> Vec<Token> {
@@ -419,5 +481,39 @@ mod tests {
     #[should_panic]
     fn ident_starting_with_number_invalid() {
         get_ident_or_function("3var");
+    }
+
+    #[test]
+    fn it_gets_flags() {
+        let args = vec!["parser".to_string(), "-l".to_string(), "-p".to_string()].into_iter();
+        let configuration = ProgramMode::build(args);
+        assert_eq!(
+            configuration,
+            Some(ProgramMode {
+                input_mode: InputMode::UserInput,
+                lex: true,
+                parse: true,
+                eval: false,
+            })
+        )
+    }
+
+    #[test]
+    fn it_ends_with_bad_args() {
+        let args = vec![
+            "parser".to_string(),
+            "filepath".to_string(),
+            "badarg".to_string(),
+        ]
+        .into_iter();
+        let configuration = ProgramMode::build(args);
+        assert_eq!(configuration, None)
+    }
+
+    #[test]
+    fn it_ends_with_no_options() {
+        let args = vec!["parser".to_string()].into_iter();
+        let configuration = ProgramMode::build(args);
+        assert_eq!(configuration, None)
     }
 }
