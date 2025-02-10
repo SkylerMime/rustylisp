@@ -1,6 +1,6 @@
 use std::{iter::Peekable, slice::Iter};
 
-use crate::lexer::{AstNumber, NAry, Token};
+use crate::lexer::{AstNumber, Binary, NAry, Token};
 
 use super::lexer::FuncType;
 
@@ -155,6 +155,35 @@ fn eval_function(function: &AstFunction) -> Result<AstNumber, String> {
                 return Err(String::from("NAry function not implemented"));
             }
         },
+        FuncType::Binary(func_type) => match func_type {
+            Binary::Sub => {
+                if let Some(first_arg) = function.operands.get(0) {
+                    if let Some(second_arg) = function.operands.get(1) {
+                        let first_evaluated = eval_s_expr(first_arg);
+                        let second_evaluated = eval_s_expr(second_arg);
+
+                        if let Ok(first) = first_evaluated {
+                            if let Ok(second) = second_evaluated {
+                                Ok(sub(first, second))
+                            } else {
+                                // Send up the error message
+                                second_evaluated
+                            }
+                        } else {
+                            // Send up the error message
+                            first_evaluated
+                        }
+                    } else {
+                        Err(String::from("Sub function requires two arguments"))
+                    }
+                } else {
+                    Err(String::from("The arguments should not be empty"))
+                }
+            }
+            _ => {
+                return Err(String::from("Binary function not implemented"));
+            }
+        },
         _ => {
             return Err(String::from("Function not yet implemented"));
         }
@@ -162,15 +191,42 @@ fn eval_function(function: &AstFunction) -> Result<AstNumber, String> {
 }
 
 fn add(a: AstNumber, b: AstNumber) -> AstNumber {
+    apply_with_case(
+        a,
+        b,
+        |u: f32, v: f32| -> f32 { u + v },
+        |u: u32, v: u32| -> u32 { u + v },
+    )
+}
+
+fn sub(a: AstNumber, b: AstNumber) -> AstNumber {
+    apply_with_case(
+        a,
+        b,
+        |u: f32, v: f32| -> f32 { u - v },
+        |u: u32, v: u32| -> u32 { u - v },
+    )
+}
+
+fn apply_with_case(
+    a: AstNumber,
+    b: AstNumber,
+    double_operation: fn(f32, f32) -> f32,
+    int_operation: fn(u32, u32) -> u32,
+) -> AstNumber {
     match (a, b) {
-        (AstNumber::Int(first), AstNumber::Int(second)) => AstNumber::Int(first + second),
+        (AstNumber::Int(first), AstNumber::Int(second)) => {
+            AstNumber::Int(int_operation(first, second))
+        }
         (AstNumber::Int(first), AstNumber::Double(second)) => {
-            AstNumber::Double(first as f32 + second)
+            AstNumber::Double(double_operation(first as f32, second))
         }
         (AstNumber::Double(first), AstNumber::Int(second)) => {
-            AstNumber::Double(first + second as f32)
+            AstNumber::Double(double_operation(first, second as f32))
         }
-        (AstNumber::Double(first), AstNumber::Double(second)) => AstNumber::Double(first + second),
+        (AstNumber::Double(first), AstNumber::Double(second)) => {
+            AstNumber::Double(double_operation(first, second))
+        }
     }
 }
 
@@ -282,5 +338,15 @@ mod tests {
         });
 
         assert_eq!(eval(&add_tree), Ok(Double(11.5)))
+    }
+
+    #[test]
+    fn it_evaluates_sub_function() {
+        let sub_tree = FuncNode(AstFunction {
+            func: Binary(Sub),
+            operands: vec![NumNode(Int(8)), NumNode(Int(2))],
+        });
+
+        assert_eq!(eval(&sub_tree), Ok(Int(6)))
     }
 }
