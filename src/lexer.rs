@@ -61,7 +61,7 @@ impl ProgramMode {
     }
 
     fn any_option_selected(&self) -> bool {
-        return self.eval || self.parse || self.eval;
+        return self.lex || self.parse || self.eval;
     }
 }
 
@@ -174,6 +174,11 @@ pub fn read_lines(program_mode: ProgramMode) {
                     println!("quitting...");
                     break;
                 }
+            }
+        } else {
+            if let Err(_) = check_for_quit(&tokens) {
+                println!("quitting...");
+                break;
             }
         }
 
@@ -356,11 +361,19 @@ fn parse_int(number: &str) -> Token {
 }
 
 fn print_tokens<'a>(tokens: &Vec<Token>) -> Result<(), Token<'a>> {
+    for_token(tokens, |token| println!("{}", token))
+}
+
+fn check_for_quit<'a>(tokens: &Vec<Token>) -> Result<(), Token<'a>> {
+    for_token(&tokens, |_| ())
+}
+
+fn for_token<'a>(tokens: &Vec<Token>, action: fn(&Token) -> ()) -> Result<(), Token<'a>> {
     for token in tokens {
         if *token == Token::Quit {
             return Err(Token::Quit);
         } else {
-            println!("{}", token);
+            action(token);
         }
     }
     Ok(())
