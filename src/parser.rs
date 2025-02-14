@@ -142,16 +142,16 @@ fn eval_function(function: &AstFunction) -> Result<AstNumber, String> {
                     .map(|err| err.unwrap_err())
                     .collect());
             };
-            let some_operations = maybe_operands
-                .map(|some_num| some_num.expect("These should all be 'Some' entries."));
-            match func_type {
-                NAry::Add => some_operations.reduce(|a, b| add(a, b)),
-                NAry::Mult => some_operations.reduce(|a, b| mult(a, b)),
-                _ => {
-                    return Err(String::from("NAry function not implemented"));
-                }
-            }
-            .ok_or_else(|| String::from("The arguments should not be empty"))
+            maybe_operands
+                .map(|some_num| some_num.expect("These should all be 'Some' entries."))
+                .reduce(|a, b| match func_type {
+                    NAry::Add => add(a, b),
+                    NAry::Mult => mult(a, b),
+                    NAry::Max => max(a, b),
+                    NAry::Min => min(a, b),
+                    NAry::Hypot => hypot(a, b),
+                })
+                .ok_or_else(|| String::from("The arguments should not be empty"))
         }
         FuncType::Binary(func_type) => match func_type {
             Binary::Sub => {
@@ -193,7 +193,7 @@ fn add(a: AstNumber, b: AstNumber) -> AstNumber {
         a,
         b,
         |u: f32, v: f32| -> f32 { u + v },
-        |u: u32, v: u32| -> u32 { u + v },
+        |u: i32, v: i32| -> i32 { u + v },
     )
 }
 
@@ -202,8 +202,20 @@ fn mult(a: AstNumber, b: AstNumber) -> AstNumber {
         a,
         b,
         |u: f32, v: f32| -> f32 { u * v },
-        |u: u32, v: u32| -> u32 { u * v },
+        |u: i32, v: i32| -> i32 { u * v },
     )
+}
+
+fn max(a: AstNumber, b: AstNumber) -> AstNumber {
+    compare_and_keep_winner(a, b, |u: f32, v: f32| -> f32 { u.max(v) })
+}
+
+fn min(a: AstNumber, b: AstNumber) -> AstNumber {
+    compare_and_keep_winner(a, b, |u: f32, v: f32| -> f32 { u.min(v) })
+}
+
+fn hypot(a: AstNumber, b: AstNumber) -> AstNumber {
+    coerce_to_double(a, b, |u: f32, v: f32| -> f32 { u.hypot(v) })
 }
 
 fn sub(a: AstNumber, b: AstNumber) -> AstNumber {
@@ -211,15 +223,67 @@ fn sub(a: AstNumber, b: AstNumber) -> AstNumber {
         a,
         b,
         |u: f32, v: f32| -> f32 { u - v },
-        |u: u32, v: u32| -> u32 { u - v },
+        |u: i32, v: i32| -> i32 { u - v },
     )
+}
+
+fn coerce_to_double(
+    a: AstNumber,
+    b: AstNumber,
+    double_operation: fn(f32, f32) -> f32,
+) -> AstNumber {
+    match (a, b) {
+        (AstNumber::Int(first), AstNumber::Int(second)) => {
+            AstNumber::Double(double_operation(first as f32, second as f32))
+        }
+        (AstNumber::Int(first), AstNumber::Double(second)) => {
+            AstNumber::Double(double_operation(first as f32, second))
+        }
+        (AstNumber::Double(first), AstNumber::Int(second)) => {
+            AstNumber::Double(double_operation(first, second as f32))
+        }
+        (AstNumber::Double(first), AstNumber::Double(second)) => {
+            AstNumber::Double(double_operation(first, second))
+        }
+    }
+}
+
+fn compare_and_keep_winner(
+    a: AstNumber,
+    b: AstNumber,
+    comparator: fn(f32, f32) -> f32,
+) -> AstNumber {
+    match (a, b) {
+        (AstNumber::Int(first), AstNumber::Int(second)) => {
+            AstNumber::Int(comparator(first as f32, second as f32) as i32)
+        }
+        (AstNumber::Int(first), AstNumber::Double(second)) => {
+            let winner = comparator(first as f32, second as f32);
+            if winner == first as f32 {
+                AstNumber::Int(first)
+            } else {
+                AstNumber::Double(second)
+            }
+        }
+        (AstNumber::Double(first), AstNumber::Int(second)) => {
+            let winner = comparator(first as f32, second as f32);
+            if winner == first {
+                AstNumber::Double(first)
+            } else {
+                AstNumber::Int(second)
+            }
+        }
+        (AstNumber::Double(first), AstNumber::Double(second)) => {
+            AstNumber::Double(comparator(first as f32, second as f32))
+        }
+    }
 }
 
 fn apply_with_case(
     a: AstNumber,
     b: AstNumber,
     double_operation: fn(f32, f32) -> f32,
-    int_operation: fn(u32, u32) -> u32,
+    int_operation: fn(i32, i32) -> i32,
 ) -> AstNumber {
     match (a, b) {
         (AstNumber::Int(first), AstNumber::Int(second)) => {
@@ -339,12 +403,12 @@ mod tests {
 
     #[test]
     fn it_evaluates_add_function() {
-        let mult_tree = FuncNode(AstFunction {
+        let add_tree = FuncNode(AstFunction {
             func: NAry(Add),
             operands: vec![NumNode(Double(1.5)), NumNode(Int(8)), NumNode(Int(2))],
         });
 
-        assert_eq!(eval(&mult_tree), Ok(Double(11.5)))
+        assert_eq!(eval(&add_tree), Ok(Double(11.5)))
     }
 
     #[test]
@@ -355,6 +419,41 @@ mod tests {
         });
 
         assert_eq!(eval(&mult_tree), Ok(Double(8.0)))
+    }
+
+    #[test]
+    fn it_evaluates_max_function() {
+        let max_tree = FuncNode(AstFunction {
+            func: NAry(Max),
+            operands: vec![NumNode(Double(0.5)), NumNode(Int(-100)), NumNode(Int(2))],
+        });
+
+        assert_eq!(eval(&max_tree), Ok(Int(2)))
+    }
+
+    #[test]
+    fn it_evaluates_min_function() {
+        let min_tree = FuncNode(AstFunction {
+            func: NAry(Min),
+            operands: vec![
+                NumNode(Double(0.5)),
+                NumNode(Int(-100)),
+                NumNode(Int(2)),
+                NumNode(Double(-101.5)),
+            ],
+        });
+
+        assert_eq!(eval(&min_tree), Ok(Double(-101.5)))
+    }
+
+    #[test]
+    fn it_evaluates_hypot_function() {
+        let hypot_tree = FuncNode(AstFunction {
+            func: NAry(Hypot),
+            operands: vec![NumNode(Int(3)), NumNode(Int(4))],
+        });
+
+        assert_eq!(eval(&hypot_tree), Ok(Double(5.0)))
     }
 
     #[test]

@@ -73,7 +73,7 @@ struct LexStep<'a> {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum AstNumber {
-    Int(u32),
+    Int(i32),
     Double(f32),
 }
 
