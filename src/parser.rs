@@ -133,28 +133,26 @@ fn eval_s_expr(s_expr: &AstNode) -> Result<AstNumber, String> {
 
 fn eval_function(function: &AstFunction) -> Result<AstNumber, String> {
     match function.func.clone() {
-        FuncType::NAry(func_type) => match func_type {
-            NAry::Add => {
-                // TODO: Rework without extra clone / multiple streams
-                let maybe_additions = function.operands.iter().map(|op| eval_s_expr(op));
-                if maybe_additions
-                    .clone()
-                    .any(|evaluation| evaluation.is_err())
-                {
-                    return Err(maybe_additions
-                        .filter(|evaluation| evaluation.is_err())
-                        .map(|err| err.unwrap_err())
-                        .collect());
-                };
-                maybe_additions
-                    .map(|some_num| some_num.expect("These should all be 'Some' entries."))
-                    .reduce(|a, b| add(a, b))
-                    .ok_or_else(|| String::from("The arguments should not be empty"))
+        FuncType::NAry(func_type) => {
+            // TODO: Rework without extra clone / multiple streams
+            let maybe_operands = function.operands.iter().map(|op| eval_s_expr(op));
+            if maybe_operands.clone().any(|evaluation| evaluation.is_err()) {
+                return Err(maybe_operands
+                    .filter(|evaluation| evaluation.is_err())
+                    .map(|err| err.unwrap_err())
+                    .collect());
+            };
+            let some_operations = maybe_operands
+                .map(|some_num| some_num.expect("These should all be 'Some' entries."));
+            match func_type {
+                NAry::Add => some_operations.reduce(|a, b| add(a, b)),
+                NAry::Mult => some_operations.reduce(|a, b| mult(a, b)),
+                _ => {
+                    return Err(String::from("NAry function not implemented"));
+                }
             }
-            _ => {
-                return Err(String::from("NAry function not implemented"));
-            }
-        },
+            .ok_or_else(|| String::from("The arguments should not be empty"))
+        }
         FuncType::Binary(func_type) => match func_type {
             Binary::Sub => {
                 if let Some(first_arg) = function.operands.get(0) {
@@ -196,6 +194,15 @@ fn add(a: AstNumber, b: AstNumber) -> AstNumber {
         b,
         |u: f32, v: f32| -> f32 { u + v },
         |u: u32, v: u32| -> u32 { u + v },
+    )
+}
+
+fn mult(a: AstNumber, b: AstNumber) -> AstNumber {
+    apply_with_case(
+        a,
+        b,
+        |u: f32, v: f32| -> f32 { u * v },
+        |u: u32, v: u32| -> u32 { u * v },
     )
 }
 
@@ -332,12 +339,22 @@ mod tests {
 
     #[test]
     fn it_evaluates_add_function() {
-        let add_tree = FuncNode(AstFunction {
+        let mult_tree = FuncNode(AstFunction {
             func: NAry(Add),
             operands: vec![NumNode(Double(1.5)), NumNode(Int(8)), NumNode(Int(2))],
         });
 
-        assert_eq!(eval(&add_tree), Ok(Double(11.5)))
+        assert_eq!(eval(&mult_tree), Ok(Double(11.5)))
+    }
+
+    #[test]
+    fn it_evaluates_mult_function() {
+        let mult_tree = FuncNode(AstFunction {
+            func: NAry(Mult),
+            operands: vec![NumNode(Double(0.5)), NumNode(Int(8)), NumNode(Int(2))],
+        });
+
+        assert_eq!(eval(&mult_tree), Ok(Double(8.0)))
     }
 
     #[test]
