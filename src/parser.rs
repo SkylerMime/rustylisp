@@ -153,35 +153,35 @@ fn eval_function(function: &AstFunction) -> Result<AstNumber, String> {
                 })
                 .ok_or_else(|| String::from("The arguments should not be empty"))
         }
-        FuncType::Binary(func_type) => match func_type {
-            Binary::Sub => {
-                if let Some(first_arg) = function.operands.get(0) {
-                    if let Some(second_arg) = function.operands.get(1) {
-                        let first_evaluated = eval_s_expr(first_arg);
-                        let second_evaluated = eval_s_expr(second_arg);
+        FuncType::Binary(func_type) => {
+            if let Some(first_arg) = function.operands.get(0) {
+                if let Some(second_arg) = function.operands.get(1) {
+                    let first_evaluated = eval_s_expr(first_arg);
+                    let second_evaluated = eval_s_expr(second_arg);
 
-                        if let Ok(first) = first_evaluated {
-                            if let Ok(second) = second_evaluated {
-                                Ok(sub(first, second))
-                            } else {
-                                // Send up the error message
-                                second_evaluated
-                            }
+                    if let Ok(first) = first_evaluated {
+                        if let Ok(second) = second_evaluated {
+                            Ok(match func_type {
+                                Binary::Sub => sub(first, second),
+                                Binary::Div => div(first, second),
+                                Binary::Pow => pow(first, second),
+                                Binary::Remainder => remainder(first, second),
+                            })
                         } else {
                             // Send up the error message
-                            first_evaluated
+                            second_evaluated
                         }
                     } else {
-                        Err(String::from("Sub function requires two arguments"))
+                        // Send up the error message
+                        first_evaluated
                     }
                 } else {
-                    Err(String::from("The arguments should not be empty"))
+                    Err(String::from("Sub function requires two arguments"))
                 }
+            } else {
+                Err(String::from("The arguments should not be empty"))
             }
-            _ => {
-                return Err(String::from("Binary function not implemented"));
-            }
-        },
+        }
         _ => {
             return Err(String::from("Function not yet implemented"));
         }
@@ -224,6 +224,40 @@ fn sub(a: AstNumber, b: AstNumber) -> AstNumber {
         b,
         |u: f32, v: f32| -> f32 { u - v },
         |u: i32, v: i32| -> i32 { u - v },
+    )
+}
+
+fn div(a: AstNumber, b: AstNumber) -> AstNumber {
+    apply_with_case(
+        a,
+        b,
+        |u: f32, v: f32| -> f32 { u / v },
+        |u: i32, v: i32| -> i32 { u / v },
+    )
+}
+
+fn remainder(a: AstNumber, b: AstNumber) -> AstNumber {
+    apply_with_case(
+        a,
+        b,
+        |u: f32, v: f32| -> f32 { u % v },
+        |u: i32, v: i32| -> i32 { u % v },
+    )
+}
+
+/// Panics if b is negative
+fn pow(a: AstNumber, b: AstNumber) -> AstNumber {
+    // TODO: Prevent panic
+    apply_with_case(
+        a,
+        b,
+        |u: f32, v: f32| -> f32 { u.powf(v) },
+        |u: i32, v: i32| -> i32 {
+            u.pow(
+                v.try_into()
+                    .expect("Second argument should not be negative"),
+            )
+        },
     )
 }
 
@@ -464,5 +498,64 @@ mod tests {
         });
 
         assert_eq!(eval(&sub_tree), Ok(Int(6)))
+    }
+
+    #[test]
+    fn it_evaluates_div_function_ints() {
+        let div_tree = FuncNode(AstFunction {
+            func: Binary(Div),
+            operands: vec![NumNode(Int(8)), NumNode(Int(3))],
+        });
+
+        // Integer division should floor the result
+        assert_eq!(eval(&div_tree), Ok(Int(2)))
+    }
+
+    #[test]
+    fn it_evaluates_div_function_doubles() {
+        let div_tree = FuncNode(AstFunction {
+            func: Binary(Div),
+            operands: vec![NumNode(Double(-9.0)), NumNode(Int(2))],
+        });
+
+        assert_eq!(eval(&div_tree), Ok(Double(-4.5)))
+    }
+
+    #[test]
+    fn it_evaluates_pow_function() {
+        let pow_tree = FuncNode(AstFunction {
+            func: Binary(Pow),
+            operands: vec![NumNode(Int(5)), NumNode(Int(2))],
+        });
+
+        assert_eq!(eval(&pow_tree), Ok(Int(25)))
+    }
+
+    #[test]
+    fn it_evaluates_mod_function_ints() {
+        let mod_tree = FuncNode(AstFunction {
+            func: Binary(Remainder),
+            operands: vec![NumNode(Int(18)), NumNode(Int(4))],
+        });
+
+        assert_eq!(eval(&mod_tree), Ok(Int(2)))
+    }
+
+    #[test]
+    fn it_evaluates_mod_function_doubles() {
+        let mod_tree = FuncNode(AstFunction {
+            func: Binary(Remainder),
+            operands: vec![NumNode(Double(5.5)), NumNode(Double(2.1))],
+        });
+
+        let expected = 1.3;
+        let mod_result = eval(&mod_tree);
+        let difference = if let Double(result) = mod_result.unwrap() {
+            result - expected
+        } else {
+            f32::MAX
+        };
+
+        assert!(difference < 0.01);
     }
 }
