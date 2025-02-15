@@ -1,6 +1,6 @@
 use std::{iter::Peekable, slice::Iter};
 
-use crate::lexer::{AstNumber, Binary, NAry, Token};
+use crate::lexer::{AstNumber, Binary, NAry, Token, Unary};
 
 use super::lexer::FuncType;
 
@@ -190,9 +190,30 @@ fn eval_function(function: &AstFunction) -> Result<AstNumber, String> {
                 Err(String::from("The arguments should not be empty"))
             }
         }
-        _ => {
-            return Err(String::from("Function not yet implemented"));
-        }
+
+        FuncType::Unary(func_type) => match func_type {
+            Unary::Abs => {
+                if let Some(operand) = function.operands.get(0) {
+                    let evaluated = eval_s_expr(operand);
+                    if let Ok(result) = evaluated {
+                        Ok(abs(result))
+                    } else {
+                        evaluated
+                    }
+                } else {
+                    return Err(String::from("The arguments should not be empty"));
+                }
+            }
+            _ => return Err(String::from("Unary function not yet implemented")),
+        },
+    }
+}
+
+fn abs(a: AstNumber) -> AstNumber {
+    match a {
+        AstNumber::Int(value) if value < 0 => AstNumber::Int(value * -1),
+        AstNumber::Double(value) if value < 0.0 => AstNumber::Double(value * -1.0),
+        _ => a,
     }
 }
 
@@ -611,5 +632,15 @@ mod tests {
         };
 
         assert!(difference < 0.01);
+    }
+
+    #[test]
+    fn it_evaluates_abs_function() {
+        let sub_tree = FuncNode(AstFunction {
+            func: Unary(Abs),
+            operands: vec![NumNode(Int(-8))],
+        });
+
+        assert_eq!(eval(&sub_tree), Ok(Int(8)))
     }
 }
