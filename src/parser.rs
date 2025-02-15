@@ -190,22 +190,33 @@ fn eval_function(function: &AstFunction) -> Result<AstNumber, String> {
                 Err(String::from("The arguments should not be empty"))
             }
         }
-
-        FuncType::Unary(func_type) => match func_type {
-            Unary::Abs => {
-                if let Some(operand) = function.operands.get(0) {
-                    let evaluated = eval_s_expr(operand);
-                    if let Ok(result) = evaluated {
-                        Ok(abs(result))
-                    } else {
-                        evaluated
-                    }
+        FuncType::Unary(func_type) => {
+            if let Some(operand) = function.operands.get(0) {
+                let evaluated = eval_s_expr(operand);
+                if let Ok(result) = evaluated {
+                    Ok(match func_type {
+                        Unary::Abs => abs(result),
+                        Unary::Exp => exp(result),
+                        Unary::Exp2 => exp2(result),
+                        Unary::Log => log(result),
+                        Unary::Sqrt => sqrt(result),
+                        Unary::Cbrt => cbrt(result),
+                        Unary::Neg => neg(result),
+                    })
                 } else {
-                    return Err(String::from("The arguments should not be empty"));
+                    evaluated
                 }
+            } else {
+                return Err(String::from("The arguments should not be empty"));
             }
-            _ => return Err(String::from("Unary function not yet implemented")),
-        },
+        }
+    }
+}
+
+fn neg(a: AstNumber) -> AstNumber {
+    match a {
+        AstNumber::Int(value) => AstNumber::Int(value * -1),
+        AstNumber::Double(value) => AstNumber::Double(value * -1.0),
     }
 }
 
@@ -217,61 +228,67 @@ fn abs(a: AstNumber) -> AstNumber {
     }
 }
 
+fn exp(a: AstNumber) -> AstNumber {
+    coerce_to_double_unary(a, |u| u.exp())
+}
+
+fn exp2(a: AstNumber) -> AstNumber {
+    match a {
+        AstNumber::Int(value) if value >= 0 => AstNumber::Int((2 as i32).pow(value as u32)),
+        AstNumber::Int(value) => AstNumber::Double((2.0 as f32).powf(value as f32)),
+        AstNumber::Double(value) => AstNumber::Double((2.0 as f32).powf(value as f32)),
+    }
+}
+
+fn log(a: AstNumber) -> AstNumber {
+    coerce_to_double_unary(a, |u| u.ln())
+}
+
+fn sqrt(a: AstNumber) -> AstNumber {
+    coerce_to_double_unary(a, |u| u.sqrt())
+}
+
+fn cbrt(a: AstNumber) -> AstNumber {
+    coerce_to_double_unary(a, |u| u.cbrt())
+}
+
+fn coerce_to_double_unary(a: AstNumber, double_operation: fn(f32) -> f32) -> AstNumber {
+    match a {
+        AstNumber::Int(value) => AstNumber::Double(double_operation(value as f32)),
+        AstNumber::Double(value) => AstNumber::Double(double_operation(value)),
+    }
+}
+
 fn add(a: AstNumber, b: AstNumber) -> AstNumber {
-    apply_with_case(
-        a,
-        b,
-        |u: f32, v: f32| -> f32 { u + v },
-        |u: i32, v: i32| -> i32 { u + v },
-    )
+    apply_with_case(a, b, |u, v| -> f32 { u + v }, |u, v| -> i32 { u + v })
 }
 
 fn mult(a: AstNumber, b: AstNumber) -> AstNumber {
-    apply_with_case(
-        a,
-        b,
-        |u: f32, v: f32| -> f32 { u * v },
-        |u: i32, v: i32| -> i32 { u * v },
-    )
+    apply_with_case(a, b, |u, v| -> f32 { u * v }, |u, v| -> i32 { u * v })
 }
 
 fn max(a: AstNumber, b: AstNumber) -> AstNumber {
-    compare_and_keep_winner(a, b, |u: f32, v: f32| -> f32 { u.max(v) })
+    compare_and_keep_winner(a, b, |u, v| -> f32 { u.max(v) })
 }
 
 fn min(a: AstNumber, b: AstNumber) -> AstNumber {
-    compare_and_keep_winner(a, b, |u: f32, v: f32| -> f32 { u.min(v) })
+    compare_and_keep_winner(a, b, |u, v| -> f32 { u.min(v) })
 }
 
 fn hypot(a: AstNumber, b: AstNumber) -> AstNumber {
-    coerce_to_double(a, b, |u: f32, v: f32| -> f32 { u.hypot(v) })
+    coerce_to_double_binary(a, b, |u, v| -> f32 { u.hypot(v) })
 }
 
 fn sub(a: AstNumber, b: AstNumber) -> AstNumber {
-    apply_with_case(
-        a,
-        b,
-        |u: f32, v: f32| -> f32 { u - v },
-        |u: i32, v: i32| -> i32 { u - v },
-    )
+    apply_with_case(a, b, |u, v| -> f32 { u - v }, |u, v| -> i32 { u - v })
 }
 
 fn div(a: AstNumber, b: AstNumber) -> AstNumber {
-    apply_with_case(
-        a,
-        b,
-        |u: f32, v: f32| -> f32 { u / v },
-        |u: i32, v: i32| -> i32 { u / v },
-    )
+    apply_with_case(a, b, |u, v| -> f32 { u / v }, |u, v| -> i32 { u / v })
 }
 
 fn remainder(a: AstNumber, b: AstNumber) -> AstNumber {
-    apply_with_case(
-        a,
-        b,
-        |u: f32, v: f32| -> f32 { u % v },
-        |u: i32, v: i32| -> i32 { u % v },
-    )
+    apply_with_case(a, b, |u, v| -> f32 { u % v }, |u, v| -> i32 { u % v })
 }
 
 /// Panics if b is negative
@@ -280,8 +297,8 @@ fn pow(a: AstNumber, b: AstNumber) -> AstNumber {
     apply_with_case(
         a,
         b,
-        |u: f32, v: f32| -> f32 { u.powf(v) },
-        |u: i32, v: i32| -> i32 {
+        |u, v| -> f32 { u.powf(v) },
+        |u, v| -> i32 {
             u.pow(
                 v.try_into()
                     .expect("Second argument should not be negative"),
@@ -290,7 +307,7 @@ fn pow(a: AstNumber, b: AstNumber) -> AstNumber {
     )
 }
 
-fn coerce_to_double(
+fn coerce_to_double_binary(
     a: AstNumber,
     b: AstNumber,
     double_operation: fn(f32, f32) -> f32,
@@ -366,7 +383,10 @@ fn apply_with_case(
 
 #[cfg(test)]
 mod tests {
-    use crate::parser::{eval, parse_tokens, AstFunction, AstNode::*, AstNumber::*};
+    use crate::{
+        lexer::AstNumber,
+        parser::{eval, parse_tokens, AstFunction, AstNode::*, AstNumber::*},
+    };
 
     use super::super::lexer::{Binary::*, FuncType::*, NAry::*, Token::*, Unary::*};
 
@@ -623,15 +643,20 @@ mod tests {
             operands: vec![NumNode(Double(5.5)), NumNode(Double(2.1))],
         });
 
-        let expected = 1.3;
-        let mod_result = eval(&mod_tree);
-        let difference = if let Double(result) = mod_result.unwrap() {
-            result - expected
-        } else {
-            f32::MAX
-        };
+        assert!(almost_equal(eval(&mod_tree), 1.3));
+    }
 
-        assert!(difference < 0.01);
+    fn almost_equal(actual: Result<AstNumber, String>, expected: f32) -> bool {
+        if let Ok(Double(actual_value)) = actual {
+            if (expected - actual_value).abs() < 0.001 {
+                return true;
+            } else {
+                println!("actual: {}", actual_value);
+                return false;
+            }
+        } else {
+            panic!("Not an ok double");
+        }
     }
 
     #[test]
@@ -642,5 +667,65 @@ mod tests {
         });
 
         assert_eq!(eval(&sub_tree), Ok(Int(8)))
+    }
+
+    #[test]
+    fn it_evaluates_exp_function() {
+        let exp_tree = FuncNode(AstFunction {
+            func: Unary(Exp),
+            operands: vec![NumNode(Int(2))],
+        });
+
+        assert!(almost_equal(eval(&exp_tree), 7.38905))
+    }
+
+    #[test]
+    fn it_evaluates_ln_function() {
+        let exp_tree = FuncNode(AstFunction {
+            func: Unary(Log),
+            operands: vec![NumNode(Int(2))],
+        });
+
+        assert!(almost_equal(eval(&exp_tree), 0.69314))
+    }
+
+    #[test]
+    fn it_evaluates_sqrt_function() {
+        let exp_tree = FuncNode(AstFunction {
+            func: Unary(Sqrt),
+            operands: vec![NumNode(Double(25.0))],
+        });
+
+        assert!(almost_equal(eval(&exp_tree), 5.0))
+    }
+
+    #[test]
+    fn it_evaluates_cbrt_function() {
+        let exp_tree = FuncNode(AstFunction {
+            func: Unary(Cbrt),
+            operands: vec![NumNode(Int(27))],
+        });
+
+        assert!(almost_equal(eval(&exp_tree), 3.0))
+    }
+
+    #[test]
+    fn it_evaluates_exp2_function_ints() {
+        let exp_tree = FuncNode(AstFunction {
+            func: Unary(Exp2),
+            operands: vec![NumNode(Int(3))],
+        });
+
+        assert_eq!(eval(&exp_tree), Ok(Int(8)))
+    }
+
+    #[test]
+    fn it_evaluates_exp2_function_doubles() {
+        let exp_tree = FuncNode(AstFunction {
+            func: Unary(Exp2),
+            operands: vec![NumNode(Double(0.5))],
+        });
+
+        assert!(almost_equal(eval(&exp_tree), 1.4142135))
     }
 }

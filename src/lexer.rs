@@ -1,4 +1,4 @@
-use std::{clone, f32::consts::E, str::FromStr};
+use std::str::FromStr;
 extern crate pretty_env_logger;
 
 use core::fmt;
