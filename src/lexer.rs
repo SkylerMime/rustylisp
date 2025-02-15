@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{clone, f32::consts::E, str::FromStr};
 extern crate pretty_env_logger;
 
 use core::fmt;
@@ -144,13 +144,20 @@ impl<'a> fmt::Display for Token<'a> {
     }
 }
 
-pub fn read_file(path: String) {
-    if let Ok(contents) = fs::read_to_string(path.clone()) {
-        let tokens = lex_string(&contents);
-        // result can be ignored in file-reading mode
-        let _ = print_tokens(&tokens);
+pub fn read_file(program_mode: ProgramMode) {
+    if let InputMode::FilePath(ref path) = program_mode.input_mode {
+        if let Ok(contents) = fs::read_to_string(path.clone()) {
+            for line in contents.lines() {
+                if let Err(_) = process_line(&program_mode, line) {
+                    println!("Warn: Ended file reading early due to quit command");
+                    break;
+                }
+            }
+        } else {
+            println!("Fatal: File {} not found", path);
+        }
     } else {
-        println!("Fatal: File {} not found", path);
+        println!("Fatal: Program mode is not 'read from file'")
     }
 }
 
@@ -164,46 +171,53 @@ pub fn read_lines(program_mode: ProgramMode) {
         io::stdin()
             .read_line(&mut input)
             .expect("User input should have been readable");
-        let tokens = lex_string(input.as_str());
-        if program_mode.lex {
-            match print_tokens(&tokens) {
-                Ok(()) => {
-                    println!();
-                }
-                Err(_) => {
-                    println!("quitting...");
-                    break;
-                }
-            }
-        } else {
-            if let Err(_) = check_for_quit(&tokens) {
-                println!("quitting...");
-                break;
-            }
+        if let Err(_) = process_line(&program_mode, input.as_str()) {
+            break;
         }
-
-        match parse_tokens(&mut tokens.iter().peekable()) {
-            Ok(root) => {
-                if program_mode.parse {
-                    print_abstract_syntax_tree(root.clone(), 0);
-                    println!();
-                }
-                if program_mode.eval {
-                    match eval(&root) {
-                        Ok(parse_result) => println!("=> {}", parse_result),
-                        Err(msg) => println!("Evaluation Error: {}", msg),
-                    }
-                }
-            }
-            Err(error_message) => {
-                println!("Parsing Error: {}", error_message);
-            }
-        }
-        print!("\nparser $ ");
-        stdout()
-            .flush()
-            .expect("Next line should have been writable");
     }
+}
+
+fn process_line(program_mode: &ProgramMode, line: &str) -> Result<(), ()> {
+    let tokens = lex_string(line);
+    if program_mode.lex {
+        match print_tokens(&tokens) {
+            Ok(()) => {
+                println!();
+            }
+            Err(_) => {
+                println!("quitting...");
+                return Err(());
+            }
+        }
+    } else {
+        if let Err(_) = check_for_quit(&tokens) {
+            println!("quitting...");
+            return Err(());
+        }
+    }
+
+    match parse_tokens(&mut tokens.iter().peekable()) {
+        Ok(root) => {
+            if program_mode.parse {
+                print_abstract_syntax_tree(root.clone(), 0);
+                println!();
+            }
+            if program_mode.eval {
+                match eval(&root) {
+                    Ok(parse_result) => println!("=> {}", parse_result),
+                    Err(msg) => println!("Evaluation Error: {}", msg),
+                }
+            }
+        }
+        Err(error_message) => {
+            println!("Parsing Error: {}", error_message);
+        }
+    }
+    print!("\nparser $ ");
+    stdout()
+        .flush()
+        .expect("Next line should have been writable");
+    Ok(())
 }
 
 pub fn print_help_message() {

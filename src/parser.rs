@@ -176,7 +176,7 @@ fn eval_function(function: &AstFunction) -> Result<AstNumber, String> {
                         first_evaluated
                     }
                 } else {
-                    Err(String::from("Sub function requires two arguments"))
+                    Err(String::from("Binary function requires two arguments"))
                 }
             } else {
                 Err(String::from("The arguments should not be empty"))

@@ -16,7 +16,7 @@ fn main() {
     if let Some(program_mode) = ProgramMode::build(env::args()) {
         match program_mode.input_mode {
             InputMode::UserInput => read_lines(program_mode),
-            InputMode::FilePath(file_path) => read_file(file_path),
+            InputMode::FilePath(_) => read_file(program_mode),
         };
     } else {
         print_help_message();
