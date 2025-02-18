@@ -16,13 +16,11 @@ pub struct AstFunction {
     operands: Vec<AstNode>,
 }
 
-pub fn parse_tokens<'a>(
-    tokens: &mut Peekable<Iter<'a, Token<'a>>>,
-) -> Result<AstNode, &'static str> {
+pub fn parse_tokens<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNode, String> {
     parse_f_expr(tokens)
 }
 
-fn parse_f_expr<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNode, &'static str> {
+fn parse_f_expr<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNode, String> {
     if let Some(Token::LeftParen) = tokens.next() {
         if let Some(Token::Func(func_token)) = tokens.next() {
             let operands = match func_token {
@@ -33,28 +31,35 @@ fn parse_f_expr<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNod
                 FuncType::Binary(_) => parse_two_args(tokens),
                 FuncType::NAry(_) => parse_many_args(tokens),
             };
-            match operands {
+            let node = match operands {
                 Ok(operands) => Ok(AstNode::FuncNode(AstFunction {
                     func: func_token.clone(),
                     operands,
                 })),
                 Err(error) => Err(error),
+            };
+            if let Some(Token::RightParen) = tokens.next() {
+                node
+            } else {
+                Err(String::from("f_expr must end with a right parentheses"))
             }
         } else {
-            Err("The first word is not a known function")
+            Err(String::from("The first word is not a known function"))
         }
     } else {
-        Err("f_expr must start with a left parentheses")
+        Err(String::from("f_expr must start with a left parentheses"))
     }
 }
 
-fn parse_one_arg<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNode, &'static str> {
+fn parse_one_arg<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNode, String> {
     let s_expr = parse_s_expr(tokens);
     if let Ok(s_expr_ok) = s_expr {
-        if let Some(Token::RightParen) = tokens.next() {
+        if let Some(Token::RightParen) = tokens.peek() {
             Ok(s_expr_ok)
         } else {
-            Err("This type of function takes only one argument")
+            Err(String::from(
+                "This type of function takes only one argument",
+            ))
         }
     } else {
         s_expr
@@ -63,22 +68,22 @@ fn parse_one_arg<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNo
 
 fn parse_two_args<'a>(
     mut tokens: &mut Peekable<Iter<'a, Token<'a>>>,
-) -> Result<Vec<AstNode>, &'static str> {
+) -> Result<Vec<AstNode>, String> {
     match parse_s_expr(&mut tokens) {
         Ok(first_expr) => match parse_s_expr(&mut tokens) {
-            Ok(second_expr) => match tokens.next() {
+            Ok(second_expr) => match tokens.peek() {
                 Some(Token::RightParen) => Ok(vec![first_expr, second_expr]),
-                _ => Err("This type of function takes two arguments"),
+                _ => Err(String::from(
+                    "This type of function takes exactly two arguments",
+                )),
             },
-            Err(_) => Err("This type of function takes exactly two arguments"),
+            Err(err_msg) => Err(err_msg),
         },
         Err(err_msg) => Err(err_msg),
     }
 }
 
-fn parse_many_args<'a>(
-    tokens: &mut Peekable<Iter<'a, Token<'a>>>,
-) -> Result<Vec<AstNode>, &'static str> {
+fn parse_many_args<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<Vec<AstNode>, String> {
     let mut operands = Vec::new();
     while tokens.peek() != Some(&&Token::RightParen) {
         match parse_s_expr(tokens) {
@@ -90,7 +95,7 @@ fn parse_many_args<'a>(
     return Ok(operands);
 }
 
-fn parse_s_expr<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNode, &'static str> {
+fn parse_s_expr<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNode, String> {
     // TODO: Avoid clone
     match tokens.peek() {
         Some(Token::Number(number)) => {
@@ -98,7 +103,10 @@ fn parse_s_expr<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNod
             Ok(AstNode::NumNode(number.clone()))
         }
         Some(Token::LeftParen) => parse_f_expr(tokens),
-        _ => Err("Unexpected token for s_expr"),
+        Some(token) => Err(format!("Unexpected token for start of s_expr: {}", token)),
+        None => Err(String::from(
+            "Expected token at the end of s_expr, got None.",
+        )),
     }
 }
 
@@ -350,7 +358,7 @@ mod tests {
             operands: vec![NumNode(Int(3))],
         });
         assert_eq!(
-            parse_tokens(&mut tokens).expect("It should parse without throwing an error."),
+            parse_tokens(&mut tokens).expect("It should parse without throwing an error"),
             tree_result
         );
     }
@@ -426,6 +434,52 @@ mod tests {
                     operands: vec![NumNode(Int(111)), NumNode(Int(222))],
                 }),
                 NumNode(Int(333)),
+            ],
+        });
+
+        assert_eq!(
+            parse_tokens(&mut tokens).expect("It should parse without throwing an error."),
+            tree_result
+        )
+    }
+
+    #[test]
+    fn it_parses_multiple_composite_functions() {
+        // (sub (mult 1 2) (add 1 2 3 4))
+        let tokens = vec![
+            LeftParen,
+            Func(Binary(Sub)),
+            LeftParen,
+            Func(NAry(Mult)),
+            Number(Int(1)),
+            Number(Int(2)),
+            RightParen,
+            LeftParen,
+            Func(NAry(Add)),
+            Number(Int(1)),
+            Number(Int(2)),
+            Number(Int(3)),
+            Number(Int(4)),
+            RightParen,
+            RightParen,
+        ];
+        let mut tokens = tokens.iter().peekable();
+        let tree_result = FuncNode(AstFunction {
+            func: Binary(Sub),
+            operands: vec![
+                FuncNode(AstFunction {
+                    func: NAry(Mult),
+                    operands: vec![NumNode(Int(1)), NumNode(Int(2))],
+                }),
+                FuncNode(AstFunction {
+                    func: NAry(Add),
+                    operands: vec![
+                        NumNode(Int(1)),
+                        NumNode(Int(2)),
+                        NumNode(Int(3)),
+                        NumNode(Int(4)),
+                    ],
+                }),
             ],
         });
 
