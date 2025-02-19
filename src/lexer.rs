@@ -244,7 +244,7 @@ fn get_next_token(remaining_string: &str) -> Option<LexStep> {
     if let Some(first_char) = remaining_chars.nth(0) {
         Some(match first_char {
             'a'..='z' | 'A'..='Z' | '_' | '$' => get_ident_or_function(remaining_string),
-            '0'..='9' => get_number(remaining_string),
+            '-' | '0'..='9' => get_number(remaining_string),
             _ => {
                 // Token is a single character
                 LexStep {
@@ -323,6 +323,16 @@ fn get_number(number_and_remaining: &str) -> LexStep {
     let number_and_enumeration = number_and_remaining.chars().enumerate();
     for (number_end, character) in number_and_enumeration {
         match character {
+            '-' => {
+                if number_end != 0 {
+                    // TODO: Use Result instead of error! log
+                    error!("Negative signs can only occur at the start of numbers, token invalid");
+                    return LexStep {
+                        token: Token::Invalid('-'),
+                        remaining_to_lex: remaining,
+                    };
+                }
+            }
             '.' => {
                 if number_type == AstNumber::Int(0) {
                     number_type = AstNumber::Double(0.0);
@@ -409,6 +419,12 @@ mod tests {
     fn it_lexes_ints() {
         let result = get_next_token("1234").unwrap();
         assert_eq!(result.token, Number(Int(1234)));
+    }
+
+    #[test]
+    fn it_lexes_negative_ints() {
+        let result = get_next_token("-3").unwrap();
+        assert_eq!(result.token, Number(Int(-3)));
     }
 
     #[test]
