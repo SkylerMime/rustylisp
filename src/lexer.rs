@@ -265,6 +265,7 @@ fn get_next_token(remaining_string: &str) -> Option<LexStep> {
 // NOTE: Identifiers aren't used on the current step but will be soon
 fn get_ident_or_function(ident_and_remaining: &str) -> LexStep {
     let mut remaining_chars = ident_and_remaining.chars().enumerate();
+    // Confirm the first character is legal for the start of an identifier
     if let Some((_, 'a'..='z' | 'A'..='Z' | '_' | '$')) = remaining_chars.next() {
         ();
     } else {
@@ -280,15 +281,15 @@ fn get_ident_or_function(ident_and_remaining: &str) -> LexStep {
             'a'..='z' | 'A'..='Z' | '_' | '$' | '0'..='9'
                 if identifier_end == ident_and_remaining.len() - 1 =>
             {
+                identifier = &ident_and_remaining[..identifier_end + 1];
                 result = LexStep {
-                    token: Token::Ident(&ident_and_remaining[..identifier_end + 1]),
+                    token: Token::Ident(identifier),
                     remaining_to_lex: "",
                 };
                 break;
             }
             'a'..='z' | 'A'..='Z' | '_' | '$' | '0'..='9' => (),
             _ => {
-                let ident_and_remaining = ident_and_remaining;
                 identifier = &ident_and_remaining[..identifier_end];
                 result = LexStep {
                     token: Token::Ident(identifier),
@@ -406,6 +407,7 @@ fn for_token<'a>(tokens: &Vec<Token>, action: fn(&Token) -> ()) -> Result<(), To
 #[cfg(test)]
 mod tests {
     use super::AstNumber::*;
+
     use super::Token::*;
     use super::*;
 
@@ -558,5 +560,17 @@ mod tests {
         let args = vec!["parser".to_string()].into_iter();
         let configuration = ProgramMode::build(args);
         assert_eq!(configuration, None)
+    }
+
+    #[test]
+    fn it_reads_functions() {
+        let result = lex_string("add");
+        assert_eq!(result, vec![Func(FuncType::NAry(NAry::Add))])
+    }
+
+    #[test]
+    fn it_reads_quit() {
+        let result = lex_string("quit");
+        assert_eq!(result, vec![Quit])
     }
 }
