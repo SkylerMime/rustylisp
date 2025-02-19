@@ -10,7 +10,8 @@ use std::{
 
 use strum_macros::EnumString;
 
-use crate::parser::{eval, parse_tokens, print_abstract_syntax_tree};
+use crate::evaluator::eval;
+use crate::parser::{parse_tokens, print_abstract_syntax_tree};
 
 #[derive(Debug, PartialEq)]
 pub enum InputMode {
