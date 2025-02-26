@@ -1,4 +1,4 @@
-use crate::lexer::{AstNumber, Binary, FuncType, NAry, Unary};
+use crate::lexer::{AstNumber, Binary, FuncType, NAry, NoArgs, Unary};
 use crate::parser::{AstFunction, AstNode};
 
 pub fn eval(root: &AstNode) -> Result<AstNumber, String> {
@@ -23,7 +23,7 @@ fn eval_function(function: &AstFunction) -> Result<AstNumber, String> {
                     .map(|err| err.unwrap_err())
                     .collect());
             };
-            maybe_operands
+            Ok(maybe_operands
                 .map(|some_num| some_num.expect("These should all be 'Some' entries."))
                 .reduce(|a, b| match func_type {
                     NAry::Add => add(a, b),
@@ -32,7 +32,7 @@ fn eval_function(function: &AstFunction) -> Result<AstNumber, String> {
                     NAry::Min => min(a, b),
                     NAry::Hypot => hypot(a, b),
                 })
-                .ok_or_else(|| String::from("The arguments should not be empty"))
+                .unwrap_or(func_type.no_args()))
         }
         FuncType::Binary(func_type) => {
             if let Some(first_arg) = function.operands.get(0) {
@@ -90,6 +90,7 @@ fn neg(a: AstNumber) -> AstNumber {
     match a {
         AstNumber::Int(value) => AstNumber::Int(value * -1),
         AstNumber::Double(value) => AstNumber::Double(value * -1.0),
+        AstNumber::NAN => AstNumber::NAN,
     }
 }
 
@@ -110,6 +111,7 @@ fn exp2(a: AstNumber) -> AstNumber {
         AstNumber::Int(value) if value >= 0 => AstNumber::Int((2 as i32).pow(value as u32)),
         AstNumber::Int(value) => AstNumber::Double((2.0 as f32).powf(value as f32)),
         AstNumber::Double(value) => AstNumber::Double((2.0 as f32).powf(value as f32)),
+        AstNumber::NAN => AstNumber::NAN,
     }
 }
 
@@ -129,6 +131,7 @@ fn coerce_to_double_unary(a: AstNumber, double_operation: fn(f32) -> f32) -> Ast
     match a {
         AstNumber::Int(value) => AstNumber::Double(double_operation(value as f32)),
         AstNumber::Double(value) => AstNumber::Double(double_operation(value)),
+        AstNumber::NAN => AstNumber::NAN,
     }
 }
 
@@ -198,6 +201,7 @@ fn coerce_to_double_binary(
         (AstNumber::Double(first), AstNumber::Double(second)) => {
             AstNumber::Double(double_operation(first, second))
         }
+        _ => AstNumber::NAN,
     }
 }
 
@@ -229,6 +233,7 @@ fn compare_and_keep_winner(
         (AstNumber::Double(first), AstNumber::Double(second)) => {
             AstNumber::Double(comparator(first as f32, second as f32))
         }
+        _ => AstNumber::NAN,
     }
 }
 
@@ -251,6 +256,7 @@ fn apply_with_case(
         (AstNumber::Double(first), AstNumber::Double(second)) => {
             AstNumber::Double(double_operation(first, second))
         }
+        _ => AstNumber::NAN,
     }
 }
 
@@ -258,7 +264,13 @@ fn apply_with_case(
 mod tests {
     use crate::{
         evaluator::eval,
-        lexer::{AstNumber, AstNumber::*, Binary::*, FuncType::*, NAry::*, Unary::*},
+        lexer::{
+            AstNumber::{self, *},
+            Binary::*,
+            FuncType::*,
+            NAry::*,
+            Unary::*,
+        },
         parser::{AstFunction, AstNode::*},
     };
 
@@ -273,6 +285,16 @@ mod tests {
     }
 
     #[test]
+    fn add_no_args_returns_zero() {
+        let add_tree = FuncNode(AstFunction {
+            func: NAry(Add),
+            operands: Vec::new(),
+        });
+
+        assert_eq!(eval(&add_tree), Ok(Int(0)))
+    }
+
+    #[test]
     fn it_evaluates_mult_function() {
         let mult_tree = FuncNode(AstFunction {
             func: NAry(Mult),
@@ -283,6 +305,16 @@ mod tests {
     }
 
     #[test]
+    fn mult_no_args_returns_one() {
+        let mult_tree = FuncNode(AstFunction {
+            func: NAry(Mult),
+            operands: Vec::new(),
+        });
+
+        assert_eq!(eval(&mult_tree), Ok(Int(1)))
+    }
+
+    #[test]
     fn it_evaluates_max_function() {
         let max_tree = FuncNode(AstFunction {
             func: NAry(Max),
@@ -290,6 +322,16 @@ mod tests {
         });
 
         assert_eq!(eval(&max_tree), Ok(Int(2)))
+    }
+
+    #[test]
+    fn max_no_args_returns_nan() {
+        let max_tree = FuncNode(AstFunction {
+            func: NAry(Max),
+            operands: Vec::new(),
+        });
+
+        assert_eq!(eval(&max_tree), Ok(NAN))
     }
 
     #[test]
@@ -308,6 +350,16 @@ mod tests {
     }
 
     #[test]
+    fn min_no_args_returns_nan() {
+        let min_tree = FuncNode(AstFunction {
+            func: NAry(Min),
+            operands: Vec::new(),
+        });
+
+        assert_eq!(eval(&min_tree), Ok(NAN))
+    }
+
+    #[test]
     fn it_evaluates_hypot_function() {
         let hypot_tree = FuncNode(AstFunction {
             func: NAry(Hypot),
@@ -315,6 +367,16 @@ mod tests {
         });
 
         assert_eq!(eval(&hypot_tree), Ok(Double(5.0)))
+    }
+
+    #[test]
+    fn hypot_no_args_returns_zero() {
+        let hypot_tree = FuncNode(AstFunction {
+            func: NAry(Hypot),
+            operands: Vec::new(),
+        });
+
+        assert_eq!(eval(&hypot_tree), Ok(Double(0.0)))
     }
 
     #[test]

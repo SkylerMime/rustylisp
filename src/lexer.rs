@@ -8,7 +8,7 @@ use std::{
     io::{self, stdout, Write},
 };
 
-use strum_macros::EnumString;
+use strum_macros::{Display, EnumString};
 
 use crate::evaluator::eval;
 use crate::parser::{parse_tokens, print_abstract_syntax_tree};
@@ -76,6 +76,7 @@ struct LexStep<'a> {
 pub enum AstNumber {
     Int(i32),
     Double(f32),
+    NAN,
 }
 
 impl fmt::Display for AstNumber {
@@ -83,6 +84,7 @@ impl fmt::Display for AstNumber {
         let inner = match self {
             AstNumber::Int(inner) => inner.to_string(),
             AstNumber::Double(inner) => inner.to_string(),
+            AstNumber::NAN => "nan".to_string(),
         };
         write!(f, "{}", inner)
     }
@@ -99,6 +101,12 @@ pub enum Token<'a> {
     // TODO: Are these two needed?
     Invalid(char),
     Default,
+}
+
+impl<'a> fmt::Display for Token<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "<{:?}>", self)
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -129,7 +137,7 @@ pub enum Binary {
     Pow,
 }
 
-#[derive(Debug, PartialEq, EnumString, Clone)]
+#[derive(Debug, PartialEq, EnumString, Clone, Display)]
 #[strum(serialize_all = "lowercase")]
 pub enum NAry {
     Add,
@@ -139,9 +147,20 @@ pub enum NAry {
     Min,
 }
 
-impl<'a> fmt::Display for Token<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "<{:?}>", self)
+pub trait NoArgs {
+    fn no_args(&self) -> AstNumber;
+}
+
+impl NoArgs for NAry {
+    fn no_args(&self) -> AstNumber {
+        println!("Warn: No inputs for {:?}, returning zero", self);
+        match self {
+            NAry::Add => AstNumber::Int(0),
+            NAry::Mult => AstNumber::Int(1),
+            NAry::Hypot => AstNumber::Double(0.0),
+            NAry::Max => AstNumber::NAN,
+            NAry::Min => AstNumber::NAN,
+        }
     }
 }
 
