@@ -216,21 +216,23 @@ fn process_line(program_mode: &ProgramMode, line: &str) -> Result<(), ()> {
         }
     }
 
-    match parse_tokens(&mut tokens.iter().peekable()) {
-        Ok(root) => {
-            if program_mode.parse {
-                print_abstract_syntax_tree(root.clone(), 0);
-                println!();
-            }
-            if program_mode.eval {
-                match eval(&root) {
-                    Ok(parse_result) => println!("=> {}", parse_result),
-                    Err(msg) => println!("Evaluation Error: {}", msg),
+    if program_mode.parse || program_mode.eval {
+        match parse_tokens(&mut tokens.iter().peekable()) {
+            Ok(root) => {
+                if program_mode.parse {
+                    print_abstract_syntax_tree(root.clone(), 0);
+                    println!();
+                }
+                if program_mode.eval {
+                    match eval(&root) {
+                        Ok(parse_result) => println!("=> {}", parse_result),
+                        Err(msg) => println!("Evaluation Error: {}", msg),
+                    }
                 }
             }
-        }
-        Err(error_message) => {
-            println!("Parsing Error: {}", error_message);
+            Err(error_message) => {
+                println!("Parsing Error: {}", error_message);
+            }
         }
     }
     print!("\nparser $ ");
