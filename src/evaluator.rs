@@ -32,7 +32,7 @@ fn eval_function(function: &AstFunction) -> Result<AstNumber, String> {
                     NAry::Min => min(a, b),
                     NAry::Hypot => hypot(a, b),
                 })
-                .unwrap_or(func_type.no_args()))
+                .unwrap_or_else(|| func_type.no_args()))
         }
         FuncType::Binary(func_type) => {
             if let Some(first_arg) = function.operands.get(0) {
