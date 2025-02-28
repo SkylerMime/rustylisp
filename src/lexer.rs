@@ -1,6 +1,8 @@
 use std::str::FromStr;
 extern crate pretty_env_logger;
 
+use clap::{Args, Parser};
+
 use core::fmt;
 use std::{
     fmt::Debug,
@@ -13,57 +15,29 @@ use strum_macros::{Display, EnumString};
 use crate::evaluator::eval;
 use crate::parser::{parse_tokens, print_abstract_syntax_tree};
 
-#[derive(Debug, PartialEq)]
-pub enum InputMode {
-    UserInput,
-    FilePath(String),
+#[derive(Parser, Debug)]
+#[command(name = "RustyLisp")]
+#[command(version, about="Interpreter for a Lisp-like language", long_about=None)]
+pub struct CliArgs {
+    #[command(flatten)]
+    mode: Mode,
+
+    /// file to read from
+    pub filepath: Option<String>,
 }
 
-#[derive(Debug, PartialEq)]
-pub struct ProgramMode {
-    pub input_mode: InputMode,
+#[derive(Args, Debug)]
+#[group(required = true, multiple = true)]
+struct Mode {
+    /// lex input
+    #[arg(short, long, group = "mode")]
     pub lex: bool,
+    /// parse input
+    #[arg(short, long, group = "mode")]
     pub parse: bool,
+    /// evaluate input
+    #[arg(short, long, group = "mode")]
     pub eval: bool,
-}
-
-impl ProgramMode {
-    pub fn build(mut args: impl Iterator<Item = String>) -> Option<ProgramMode> {
-        let mut program_mode = ProgramMode {
-            input_mode: InputMode::UserInput,
-            lex: false,
-            parse: false,
-            eval: false,
-        };
-        // first arg should be the program name
-        if let None = args.next() {
-            None
-        } else {
-            while let Some(arg) = args.next() {
-                match arg.as_str() {
-                    "-l" | "--lex" => program_mode.lex = true,
-                    "-p" | "--parse" => program_mode.parse = true,
-                    "-e" | "--eval" => program_mode.eval = true,
-                    filepath => {
-                        if program_mode.input_mode == InputMode::UserInput {
-                            program_mode.input_mode = InputMode::FilePath(filepath.to_string())
-                        } else {
-                            return None;
-                        }
-                    }
-                }
-            }
-            if program_mode.any_option_selected() {
-                Some(program_mode)
-            } else {
-                None
-            }
-        }
-    }
-
-    fn any_option_selected(&self) -> bool {
-        return self.lex || self.parse || self.eval;
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -164,11 +138,11 @@ impl NoArgs for NAry {
     }
 }
 
-pub fn read_file(program_mode: ProgramMode) {
-    if let InputMode::FilePath(ref path) = program_mode.input_mode {
+pub fn read_file(args: CliArgs) {
+    if let Some(ref path) = args.filepath {
         if let Ok(contents) = fs::read_to_string(path.clone()) {
             for line in contents.lines() {
-                if let Err(_) = process_line(&program_mode, line) {
+                if let Err(_) = process_line(&args, line) {
                     println!("Warn: Ended file reading early due to quit command");
                     break;
                 }
@@ -181,7 +155,7 @@ pub fn read_file(program_mode: ProgramMode) {
     }
 }
 
-pub fn read_lines(program_mode: ProgramMode) {
+pub fn read_lines(args: CliArgs) {
     print!("parser $ ");
     stdout()
         .flush()
@@ -191,15 +165,15 @@ pub fn read_lines(program_mode: ProgramMode) {
         io::stdin()
             .read_line(&mut input)
             .expect("User input should have been readable");
-        if let Err(_) = process_line(&program_mode, input.as_str()) {
+        if let Err(_) = process_line(&args, input.as_str()) {
             break;
         }
     }
 }
 
-fn process_line(program_mode: &ProgramMode, line: &str) -> Result<(), ()> {
+fn process_line(args: &CliArgs, line: &str) -> Result<(), ()> {
     let tokens = lex_string(line);
-    if program_mode.lex {
+    if args.mode.lex {
         match print_tokens(&tokens) {
             Ok(()) => {
                 println!();
@@ -216,14 +190,14 @@ fn process_line(program_mode: &ProgramMode, line: &str) -> Result<(), ()> {
         }
     }
 
-    if program_mode.parse || program_mode.eval {
+    if args.mode.parse || args.mode.eval {
         match parse_tokens(&mut tokens.iter().peekable()) {
             Ok(root) => {
-                if program_mode.parse {
+                if args.mode.parse {
                     print_abstract_syntax_tree(root.clone(), 0);
                     println!();
                 }
-                if program_mode.eval {
+                if args.mode.eval {
                     match eval(&root) {
                         Ok(parse_result) => println!("=> {}", parse_result),
                         Err(msg) => println!("Evaluation Error: {}", msg),
@@ -240,10 +214,6 @@ fn process_line(program_mode: &ProgramMode, line: &str) -> Result<(), ()> {
         .flush()
         .expect("Next line should have been writable");
     Ok(())
-}
-
-pub fn print_help_message() {
-    println!("Usage: parser [-l | --lex] [-p | --parse] [-e | --eval] [filepath]")
 }
 
 fn lex_string(mut remaining_string: &str) -> Vec<Token> {
@@ -548,40 +518,6 @@ mod tests {
     #[should_panic]
     fn ident_starting_with_number_invalid() {
         get_ident_or_function("3var");
-    }
-
-    #[test]
-    fn it_gets_flags() {
-        let args = vec!["parser".to_string(), "-l".to_string(), "-p".to_string()].into_iter();
-        let configuration = ProgramMode::build(args);
-        assert_eq!(
-            configuration,
-            Some(ProgramMode {
-                input_mode: InputMode::UserInput,
-                lex: true,
-                parse: true,
-                eval: false,
-            })
-        )
-    }
-
-    #[test]
-    fn it_ends_with_bad_args() {
-        let args = vec![
-            "parser".to_string(),
-            "filepath".to_string(),
-            "badarg".to_string(),
-        ]
-        .into_iter();
-        let configuration = ProgramMode::build(args);
-        assert_eq!(configuration, None)
-    }
-
-    #[test]
-    fn it_ends_with_no_options() {
-        let args = vec!["parser".to_string()].into_iter();
-        let configuration = ProgramMode::build(args);
-        assert_eq!(configuration, None)
     }
 
     #[test]
