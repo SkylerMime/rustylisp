@@ -8,12 +8,24 @@ use super::lexer::FuncType;
 pub enum AstNode {
     NumNode(AstNumber),
     FuncNode(AstFunction),
+    SymNode(String),
+    ScopeNode {
+        inner: Box<AstNode>,
+        parent: Option<Box<AstNode>>,
+        symbol_table: Vec<SymbolTableNode>,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct AstFunction {
     pub func: FuncType,
     pub operands: Vec<AstNode>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct SymbolTableNode {
+    pub id: String,
+    pub value: AstNode,
 }
 
 pub fn parse_tokens<'a>(
@@ -129,6 +141,13 @@ pub fn print_abstract_syntax_tree(root: AstNode, indentation: i32) {
         }
         AstNode::NumNode(number) => {
             println!("{}{:?}", indentation_marker, number);
+        }
+        AstNode::SymNode(symbol) => {
+            println!("{}{:?}", indentation_marker, symbol);
+        }
+        AstNode::ScopeNode { inner, .. } => {
+            println!("{} SCOPE", indentation_marker);
+            print_abstract_syntax_tree(*inner, indentation + 1);
         }
     }
 }

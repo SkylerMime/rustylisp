@@ -9,6 +9,8 @@ fn eval_s_expr(s_expr: &AstNode) -> Result<AstNumber, String> {
     match s_expr {
         AstNode::FuncNode(function) => eval_function(function),
         AstNode::NumNode(number) => Ok(number.clone()),
+        AstNode::SymNode(_) => todo!("Evaluate sym nodes"),
+        AstNode::ScopeNode { .. } => todo!("Evaluate scope nodes"),
     }
 }
 
