@@ -69,7 +69,7 @@ pub enum Token<'a> {
     Number(AstNumber),
     LeftParen,
     RightParen,
-    Ident(&'a str),
+    Symbol(&'a str),
     Func(FuncType),
     Quit,
     // TODO: Are these two needed?
@@ -219,7 +219,7 @@ fn process_line(args: &CliArgs, line: &str) -> Result<(), ()> {
 fn lex_string(mut remaining_string: &str) -> Vec<Token> {
     let mut tokens = vec![];
     while let Some(result) = get_next_token(remaining_string) {
-        if result.token == Token::Ident("") {
+        if result.token == Token::Symbol("") {
             error!("Infinite loop. Remaining: {}", result.remaining_to_lex);
             break;
         }
@@ -235,7 +235,7 @@ fn get_next_token(remaining_string: &str) -> Option<LexStep> {
     let mut remaining_chars = remaining_string.chars();
     if let Some(first_char) = remaining_chars.nth(0) {
         Some(match first_char {
-            'a'..='z' | 'A'..='Z' | '_' | '$' => get_ident_or_function(remaining_string),
+            'a'..='z' | 'A'..='Z' | '_' | '$' => get_symbol_or_function(remaining_string),
             '-' | '0'..='9' => get_number(remaining_string),
             _ => {
                 // Token is a single character
@@ -255,7 +255,7 @@ fn get_next_token(remaining_string: &str) -> Option<LexStep> {
 }
 
 // NOTE: Identifiers aren't used on the current step but will be soon
-fn get_ident_or_function(ident_and_remaining: &str) -> LexStep {
+fn get_symbol_or_function(ident_and_remaining: &str) -> LexStep {
     let mut remaining_chars = ident_and_remaining.chars().enumerate();
     // Confirm the first character is legal for the start of an identifier
     if let Some((_, 'a'..='z' | 'A'..='Z' | '_' | '$')) = remaining_chars.next() {
@@ -275,7 +275,7 @@ fn get_ident_or_function(ident_and_remaining: &str) -> LexStep {
             {
                 identifier = &ident_and_remaining[..identifier_end + 1];
                 result = LexStep {
-                    token: Token::Ident(identifier),
+                    token: Token::Symbol(identifier),
                     remaining_to_lex: "",
                 };
                 break;
@@ -284,7 +284,7 @@ fn get_ident_or_function(ident_and_remaining: &str) -> LexStep {
             _ => {
                 identifier = &ident_and_remaining[..identifier_end];
                 result = LexStep {
-                    token: Token::Ident(identifier),
+                    token: Token::Symbol(identifier),
                     remaining_to_lex: &ident_and_remaining[identifier_end..],
                 };
                 break;
@@ -429,11 +429,11 @@ mod tests {
 
     #[test]
     fn it_gets_idents() {
-        let result = get_ident_or_function("test$_ABC");
+        let result = get_symbol_or_function("test$_ABC");
         assert_eq!(
             result,
             LexStep {
-                token: Ident("test$_ABC"),
+                token: Symbol("test$_ABC"),
                 remaining_to_lex: ""
             }
         );
@@ -441,11 +441,11 @@ mod tests {
 
     #[test]
     fn it_gets_idents_with_whitespace() {
-        let response = get_ident_or_function("test \n nextword");
+        let response = get_symbol_or_function("test \n nextword");
         assert_eq!(
             response,
             LexStep {
-                token: Ident("test"),
+                token: Symbol("test"),
                 remaining_to_lex: " \n nextword"
             }
         )
@@ -472,13 +472,13 @@ mod tests {
     #[test]
     fn it_lexes_identifier_and_right_paren() {
         let response = lex_string("firstvar)");
-        assert_eq!(response, vec![Ident("firstvar"), RightParen])
+        assert_eq!(response, vec![Symbol("firstvar"), RightParen])
     }
 
     #[test]
     fn it_ignores_whitespace() {
         let result = get_next_token("   \n\n  test  \n   nextword").unwrap();
-        assert_eq!(result.token, Ident("test"));
+        assert_eq!(result.token, Symbol("test"));
     }
 
     #[test]
@@ -489,7 +489,7 @@ mod tests {
             vec![
                 LeftParen,
                 Func(FuncType::NAry(NAry::Add)),
-                Ident("firstvar"),
+                Symbol("firstvar"),
                 Number(Int(123)),
                 RightParen
             ]
@@ -504,11 +504,11 @@ mod tests {
 
     #[test]
     fn it_allows_ident_with_number() {
-        let result = get_ident_or_function("var3");
+        let result = get_symbol_or_function("var3");
         assert_eq!(
             result,
             LexStep {
-                token: Ident("var3"),
+                token: Symbol("var3"),
                 remaining_to_lex: ""
             }
         )
@@ -517,7 +517,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn ident_starting_with_number_invalid() {
-        get_ident_or_function("3var");
+        get_symbol_or_function("3var");
     }
 
     #[test]
