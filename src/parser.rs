@@ -16,11 +16,19 @@ pub struct AstFunction {
     pub operands: Vec<AstNode>,
 }
 
-pub fn parse_tokens<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNode, String> {
+pub fn parse_tokens<'a>(
+    tokens: &mut Peekable<Iter<'a, Token<'a>>>,
+) -> Result<AstNode, ParseResult> {
     parse_f_expr(tokens)
 }
 
-fn parse_f_expr<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNode, String> {
+#[derive(Debug, PartialEq)]
+pub enum ParseResult {
+    Incomplete,
+    Err(String),
+}
+
+fn parse_f_expr<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNode, ParseResult> {
     if let Some(Token::LeftParen) = tokens.next() {
         if let Some(Token::Func(func_token)) = tokens.next() {
             let operands = match func_token {
@@ -31,71 +39,67 @@ fn parse_f_expr<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNod
                 FuncType::Binary(_) => parse_two_args(tokens),
                 FuncType::NAry(_) => parse_many_args(tokens),
             };
-            let node = match operands {
-                Ok(operands) => Ok(AstNode::FuncNode(AstFunction {
-                    func: func_token.clone(),
-                    operands,
-                })),
-                Err(error) => Err(error),
-            };
+            let node = AstNode::FuncNode(AstFunction {
+                func: func_token.clone(),
+                operands: operands?,
+            });
+
             if let Some(Token::RightParen) = tokens.next() {
-                node
+                Ok(node)
             } else {
-                Err(String::from("f_expr must end with a right parentheses"))
+                // Return the incomplete parse result to request further processing
+                Err(ParseResult::Incomplete)
             }
         } else {
-            Err(String::from("The first word is not a known function"))
+            Err(ParseResult::Err(String::from(
+                "The first word is not a known function",
+            )))
         }
     } else {
-        Err(String::from("f_expr must start with a left parentheses"))
+        Err(ParseResult::Err(String::from(
+            "f_expr must start with a left parentheses",
+        )))
     }
 }
 
-fn parse_one_arg<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNode, String> {
-    let s_expr = parse_s_expr(tokens);
-    if let Ok(s_expr_ok) = s_expr {
-        if let Some(Token::RightParen) = tokens.peek() {
-            Ok(s_expr_ok)
-        } else {
-            Err(String::from(
-                "This type of function takes only one argument",
-            ))
-        }
+fn parse_one_arg<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNode, ParseResult> {
+    let s_expr = parse_s_expr(tokens)?;
+
+    if let Some(Token::RightParen) = tokens.peek() {
+        Ok(s_expr)
     } else {
-        s_expr
+        Err(ParseResult::Err(String::from(
+            "This type of function takes only one argument",
+        )))
     }
 }
 
 fn parse_two_args<'a>(
     mut tokens: &mut Peekable<Iter<'a, Token<'a>>>,
-) -> Result<Vec<AstNode>, String> {
-    match parse_s_expr(&mut tokens) {
-        Ok(first_expr) => match parse_s_expr(&mut tokens) {
-            Ok(second_expr) => match tokens.peek() {
-                Some(Token::RightParen) => Ok(vec![first_expr, second_expr]),
-                _ => Err(String::from(
-                    "This type of function takes exactly two arguments",
-                )),
-            },
-            Err(err_msg) => Err(err_msg),
-        },
-        Err(err_msg) => Err(err_msg),
+) -> Result<Vec<AstNode>, ParseResult> {
+    let first_expr = parse_s_expr(&mut tokens);
+    let second_expr = parse_s_expr(&mut tokens);
+    if let Some(Token::RightParen) = tokens.peek() {
+        Ok(vec![first_expr?, second_expr?])
+    } else {
+        Err(ParseResult::Err(String::from(
+            "This type of function takes exactly two arguments",
+        )))
     }
 }
 
-fn parse_many_args<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<Vec<AstNode>, String> {
+fn parse_many_args<'a>(
+    tokens: &mut Peekable<Iter<'a, Token<'a>>>,
+) -> Result<Vec<AstNode>, ParseResult> {
     let mut operands = Vec::new();
     while tokens.peek() != Some(&&Token::RightParen) {
-        match parse_s_expr(tokens) {
-            Ok(s_expr) => operands.push(s_expr),
-            Err(msg) => return Err(msg),
-        }
+        operands.push(parse_s_expr(tokens)?)
     }
 
     return Ok(operands);
 }
 
-fn parse_s_expr<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNode, String> {
+fn parse_s_expr<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNode, ParseResult> {
     // TODO: Avoid clone
     match tokens.peek() {
         Some(Token::Number(number)) => {
@@ -103,10 +107,11 @@ fn parse_s_expr<'a>(tokens: &mut Peekable<Iter<'a, Token<'a>>>) -> Result<AstNod
             Ok(AstNode::NumNode(number.clone()))
         }
         Some(Token::LeftParen) => parse_f_expr(tokens),
-        Some(token) => Err(format!("Unexpected token for start of s_expr: {}", token)),
-        None => Err(String::from(
-            "Expected token at the end of s_expr, got None.",
-        )),
+        Some(token) => Err(ParseResult::Err(format!(
+            "Unexpected token for start of s_expr: {}",
+            token
+        ))),
+        None => Err(ParseResult::Incomplete),
     }
 }
 
@@ -130,7 +135,7 @@ pub fn print_abstract_syntax_tree(root: AstNode, indentation: i32) {
 
 #[cfg(test)]
 mod tests {
-    use crate::parser::{parse_tokens, AstFunction, AstNode::*, AstNumber::*};
+    use crate::parser::{parse_tokens, AstFunction, AstNode::*, AstNumber::*, ParseResult};
 
     use super::super::lexer::{Binary::*, FuncType::*, NAry::*, Token::*, Unary::*};
 
@@ -272,5 +277,13 @@ mod tests {
             parse_tokens(&mut tokens).expect("It should parse without throwing an error."),
             tree_result
         )
+    }
+
+    #[test]
+    fn it_handles_partial_expressions() {
+        let tokens = vec![LeftParen, Func(NAry(Add)), Number(Int(3))];
+        let mut tokens = tokens.iter().peekable();
+
+        assert_eq!(parse_tokens(&mut tokens), Err(ParseResult::Incomplete))
     }
 }

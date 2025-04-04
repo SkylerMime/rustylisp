@@ -39,3 +39,14 @@ fn mult_prints_no_warnings() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn it_allows_multi_line_expressions() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("rustylisp")?;
+
+    cmd.arg("-e").write_stdin("(add \n 1 2) \nquit");
+
+    cmd.assert().success().stdout(predicate::str::contains("3"));
+
+    Ok(())
+}

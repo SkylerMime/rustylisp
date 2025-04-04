@@ -12,8 +12,8 @@ use std::{
 
 use strum_macros::{Display, EnumString};
 
-use crate::evaluator::eval;
 use crate::parser::{parse_tokens, print_abstract_syntax_tree};
+use crate::{evaluator::eval, parser::ParseResult};
 
 #[derive(Parser, Debug)]
 #[command(name = "RustyLisp")]
@@ -141,10 +141,23 @@ impl NoArgs for NAry {
 pub fn read_file(args: CliArgs) {
     if let Some(ref path) = args.filepath {
         if let Ok(contents) = fs::read_to_string(path.clone()) {
-            for line in contents.lines() {
-                if let Err(_) = process_line(&args, line) {
-                    println!("Warn: Ended file reading early due to quit command");
-                    break;
+            let mut buffer = String::new();
+            let mut lines = contents.lines();
+
+            while let Some(line) = lines.next() {
+                buffer += line;
+                match process_command_buffer(&args, &buffer) {
+                    ProcessResult::Processed => {
+                        // Clear the buffer for the next command
+                        buffer = String::new();
+                    }
+                    ProcessResult::Incomplete => {
+                        // continue
+                    }
+                    ProcessResult::Quit => {
+                        println!("Warn: Ended file reading early due to quit command");
+                        break;
+                    }
                 }
             }
         } else {
@@ -155,24 +168,46 @@ pub fn read_file(args: CliArgs) {
     }
 }
 
-pub fn read_lines(args: CliArgs) {
-    print!("parser $ ");
+pub fn read_user_input(args: CliArgs) {
+    // TODO: Respond to Backspace
+
+    print_prompt();
     stdout()
         .flush()
-        .expect("Next line should have been writable");
+        .expect("Next command should have been writable");
+    let mut buffer = String::new();
     loop {
-        let mut input = String::new();
         io::stdin()
-            .read_line(&mut input)
+            .read_line(&mut buffer)
             .expect("User input should have been readable");
-        if let Err(_) = process_line(&args, input.as_str()) {
-            break;
+        match process_command_buffer(&args, &buffer) {
+            ProcessResult::Processed => {
+                // Clear the buffer for the next command
+                buffer = String::new();
+            }
+            ProcessResult::Incomplete => {
+                print_multiline_prompt();
+                stdout()
+                    .flush()
+                    .expect("Next buffer should have been writable");
+            }
+            ProcessResult::Quit => {
+                break;
+            }
         }
     }
 }
 
-fn process_line(args: &CliArgs, line: &str) -> Result<(), ()> {
-    let tokens = lex_string(line);
+enum ProcessResult {
+    Processed,
+    Incomplete,
+    Quit,
+}
+
+fn process_command_buffer(args: &CliArgs, buffer: &str) -> ProcessResult {
+    // TODO: No early returns
+
+    let tokens = lex_string(buffer);
     if args.mode.lex {
         match print_tokens(&tokens) {
             Ok(()) => {
@@ -180,13 +215,13 @@ fn process_line(args: &CliArgs, line: &str) -> Result<(), ()> {
             }
             Err(_) => {
                 println!("quitting...");
-                return Err(());
+                return ProcessResult::Quit;
             }
         }
     } else {
         if let Err(_) = check_for_quit(&tokens) {
             println!("quitting...");
-            return Err(());
+            return ProcessResult::Quit;
         }
     }
 
@@ -204,16 +239,29 @@ fn process_line(args: &CliArgs, line: &str) -> Result<(), ()> {
                     }
                 }
             }
-            Err(error_message) => {
-                println!("Parsing Error: {}", error_message);
-            }
+            Err(error) => match error {
+                ParseResult::Incomplete => {
+                    return ProcessResult::Incomplete;
+                }
+                ParseResult::Err(error_message) => {
+                    println!("Parsing Error: {}", error_message);
+                }
+            },
         }
     }
-    print!("\nparser $ ");
+    print_prompt();
     stdout()
         .flush()
-        .expect("Next line should have been writable");
-    Ok(())
+        .expect("Next buffer should have been writable");
+    ProcessResult::Processed
+}
+
+fn print_prompt() {
+    print!("\nrustylisp $ ");
+}
+
+fn print_multiline_prompt() {
+    print!("........... ")
 }
 
 fn lex_string(mut remaining_string: &str) -> Vec<Token> {

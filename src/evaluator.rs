@@ -37,25 +37,15 @@ fn eval_function(function: &AstFunction) -> Result<AstNumber, String> {
         FuncType::Binary(func_type) => {
             if let Some(first_arg) = function.operands.get(0) {
                 if let Some(second_arg) = function.operands.get(1) {
-                    let first_evaluated = eval_s_expr(first_arg);
-                    let second_evaluated = eval_s_expr(second_arg);
+                    let first_evaluated = eval_s_expr(first_arg)?;
+                    let second_evaluated = eval_s_expr(second_arg)?;
 
-                    if let Ok(first) = first_evaluated {
-                        if let Ok(second) = second_evaluated {
-                            Ok(match func_type {
-                                Binary::Sub => sub(first, second),
-                                Binary::Div => div(first, second),
-                                Binary::Pow => pow(first, second),
-                                Binary::Remainder => remainder(first, second),
-                            })
-                        } else {
-                            // Send up the error message
-                            second_evaluated
-                        }
-                    } else {
-                        // Send up the error message
-                        first_evaluated
-                    }
+                    Ok(match func_type {
+                        Binary::Sub => sub(first_evaluated, second_evaluated),
+                        Binary::Div => div(first_evaluated, second_evaluated),
+                        Binary::Pow => pow(first_evaluated, second_evaluated),
+                        Binary::Remainder => remainder(first_evaluated, second_evaluated),
+                    })
                 } else {
                     Err(String::from("Binary function requires two arguments"))
                 }
@@ -65,20 +55,17 @@ fn eval_function(function: &AstFunction) -> Result<AstNumber, String> {
         }
         FuncType::Unary(func_type) => {
             if let Some(operand) = function.operands.get(0) {
-                let evaluated = eval_s_expr(operand);
-                if let Ok(result) = evaluated {
-                    Ok(match func_type {
-                        Unary::Abs => abs(result),
-                        Unary::Exp => exp(result),
-                        Unary::Exp2 => exp2(result),
-                        Unary::Log => log(result),
-                        Unary::Sqrt => sqrt(result),
-                        Unary::Cbrt => cbrt(result),
-                        Unary::Neg => neg(result),
-                    })
-                } else {
-                    evaluated
-                }
+                let evaluated = eval_s_expr(operand)?;
+
+                Ok(match func_type {
+                    Unary::Abs => abs(evaluated),
+                    Unary::Exp => exp(evaluated),
+                    Unary::Exp2 => exp2(evaluated),
+                    Unary::Log => log(evaluated),
+                    Unary::Sqrt => sqrt(evaluated),
+                    Unary::Cbrt => cbrt(evaluated),
+                    Unary::Neg => neg(evaluated),
+                })
             } else {
                 return Err(String::from("The arguments should not be empty"));
             }

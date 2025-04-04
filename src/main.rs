@@ -7,7 +7,7 @@ extern crate log;
 
 use clap::Parser;
 use lexer::read_file;
-use lexer::read_lines;
+use lexer::read_user_input;
 
 use lexer::CliArgs;
 
@@ -18,6 +18,6 @@ fn main() {
     if program_mode.filepath.is_some() {
         read_file(program_mode)
     } else {
-        read_lines(program_mode)
+        read_user_input(program_mode)
     }
 }
