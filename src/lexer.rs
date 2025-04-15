@@ -71,6 +71,7 @@ pub enum Token<'a> {
     RightParen,
     Symbol(&'a str),
     Func(FuncType),
+    Let,
     Quit,
     // TODO: Are these two needed?
     Invalid(char),
@@ -348,6 +349,8 @@ fn get_symbol_or_function(ident_and_remaining: &str) -> LexStep {
             Token::Func(FuncType::Binary(func_token))
         } else if let Ok(func_token) = NAry::from_str(identifier) {
             Token::Func(FuncType::NAry(func_token))
+        } else if identifier == "let" {
+            Token::Let
         } else if identifier == "quit" {
             Token::Quit
         } else {
@@ -578,5 +581,23 @@ mod tests {
     fn it_reads_quit() {
         let result = lex_string("quit");
         assert_eq!(result, vec![Quit])
+    }
+
+    #[test]
+    fn it_reads_let() {
+        let result = lex_string("( (let (x 1) ) x )");
+        let tokens = vec![
+            LeftParen,
+            LeftParen,
+            Let,
+            LeftParen,
+            Symbol("x"),
+            Number(Int(1)),
+            RightParen,
+            RightParen,
+            Symbol("x"),
+            RightParen,
+        ];
+        assert_eq!(result, tokens);
     }
 }
